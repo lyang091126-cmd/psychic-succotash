@@ -100,13 +100,13 @@ def resolve_ticker(raw_input):
 # 1. 页面基本配置与视觉系统
 # -------------------------------------------------------------------
 st.set_page_config(
-    page_title="Anti Stock Report - 客观数据聚合终端 v2.0",
-    page_icon="🎯",
+    page_title="Anti Stock Report - 客观数据聚合工具 v2.0",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# 2. 全局样式定制
+# 自定义 CSS
 st.markdown("""
 <style>
     /* 🛡️ 终极源代码与隐私安全防护：彻底隐藏前端右上角 GitHub 图标、View Source 按钮与 Streamlit 菜单页脚 */
@@ -580,15 +580,6 @@ with set_c5:
     generate_btn = st.button("🚀 生成数据聚合报告", key="btn_main_generate", use_container_width=True)
 
 risk_preference = "稳健型"
-
-# --- 4.4 【新增】全市场实时盘口 (大盘口) ---
-try:
-    from market_tape import get_market_tape_ui
-    get_market_tape_ui(api_key_input)
-except Exception as e:
-    st.error(f"加载实时盘口失败: {e}")
-
-st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
 def fmt_price_val(val, currency=""):
     """格式化价格数字，消除浮点异常并统一显示"""
@@ -1299,18 +1290,10 @@ if generate_btn:
             st.download_button(label="📥 下载报告 (Markdown)", data=ai_reply, file_name=f"{ticker_input}_客观数据报告.md", mime="text/markdown")
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
-        except Exception as e:
-            status_box.update(label="❌ **AI 调用失败**", state="error", expanded=True)
-            st.error(f"AI 调用失败: {e}")
-
-if ticker_input and all_data and all_data.get('hist_1y') is not None:
-    if True:
-
             # ===== 提前获取股票 Profile（真实机构持仓数据，无编造） =====
             st_prof = get_stock_profile(ticker_input, info, mapped_name)
             s_title_name = st_prof['display_name']
 
-            targets = all_data.get('analyst_targets', {})
             targets = targets if isinstance(targets, dict) else {}
             mean_p = targets.get("mean") if isinstance(targets.get("mean"), (int, float)) else None
             high_p = targets.get("high") if isinstance(targets.get("high"), (int, float)) else None
@@ -1330,7 +1313,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 if pe > 0: radar_scores['估值 (Valuation)'] = max(10, min(100, 100 - (pe - 10) * 1.5))
                 rev_g = info.get('revenueGrowth', 0)
                 if rev_g: radar_scores['成长 (Growth)'] = max(10, min(100, 50 + rev_g * 100))
-                recent_close = all_data['hist_1y']['Close'].iloc[-1] if not all_data['hist_1y'].empty else 0
                 pct_1y = ((recent_close - all_data['hist_1y']['Close'].iloc[0]) / all_data['hist_1y']['Close'].iloc[0]) * 100 if not all_data['hist_1y'].empty else 0
                 radar_scores['动能 (Momentum)'] = max(10, min(100, 50 + pct_1y))
                 roe = info.get('returnOnEquity', 0)
@@ -1424,8 +1406,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 c4_a, c4_b = st.columns([0.95, 1.05])
                 with c4_a:
                     st.markdown("### 📈 缠论技术面数据摘要 <span style='font-size:0.75rem; opacity:0.6;'>⚠️ 简化版分型/中枢识别+RSI+BOLL，非买卖点建议</span>", unsafe_allow_html=True)
-                    chanlun_text_ui = analyze_kline_and_chanlun(all_data['hist_1y']) if all_data and all_data.get('hist_1y') is not None else "暂无K线数据"
-                    st.markdown(f"```\n{chanlun_text_ui}\n```")
+                    st.markdown(f"```\n{chanlun_text}\n```")
                     st.caption("📌 以上数据均基于真实K线计算得出，非AI编造。")
                 with c4_b:
                     if not all_data['hist_1y'].empty:
@@ -1538,3 +1519,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
             st.markdown("---")
             st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
+
+        except Exception as e:
+            status_box.update(label="❌ **AI 调用失败**", state="error", expanded=True)
+            st.error(f"AI 调用失败: {e}")
