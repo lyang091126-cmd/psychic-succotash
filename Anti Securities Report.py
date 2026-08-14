@@ -1301,6 +1301,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             st_prof = get_stock_profile(ticker_input, info, mapped_name)
             s_title_name = st_prof['display_name']
 
+            targets = all_data.get('analyst_targets', {})
             targets = targets if isinstance(targets, dict) else {}
             mean_p = targets.get("mean") if isinstance(targets.get("mean"), (int, float)) else None
             high_p = targets.get("high") if isinstance(targets.get("high"), (int, float)) else None
@@ -1320,6 +1321,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 if pe > 0: radar_scores['估值 (Valuation)'] = max(10, min(100, 100 - (pe - 10) * 1.5))
                 rev_g = info.get('revenueGrowth', 0)
                 if rev_g: radar_scores['成长 (Growth)'] = max(10, min(100, 50 + rev_g * 100))
+                recent_close = all_data['hist_1y']['Close'].iloc[-1] if not all_data['hist_1y'].empty else 0
                 pct_1y = ((recent_close - all_data['hist_1y']['Close'].iloc[0]) / all_data['hist_1y']['Close'].iloc[0]) * 100 if not all_data['hist_1y'].empty else 0
                 radar_scores['动能 (Momentum)'] = max(10, min(100, 50 + pct_1y))
                 roe = info.get('returnOnEquity', 0)
