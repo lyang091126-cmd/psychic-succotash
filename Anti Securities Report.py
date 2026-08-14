@@ -468,16 +468,16 @@ def fetch_hot_stocks():
 # 3. 顶部 Hero Header (Anti Stock Report)
 # -------------------------------------------------------------------
 st.markdown("""
-<div class="header-banner">
-    <div class="header-title">
-        📈 Anti Stock Report <span class="badge-green">v2.0 客观数据</span>
+<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(226, 232, 240, 0.15); padding-bottom: 0.8rem; margin-bottom: 1.5rem;">
+    <div style="font-size: 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 0.6rem; font-family: 'JetBrains Mono', monospace; letter-spacing: -0.5px;">
+        <span style="color:#00b865;">Anti</span>Stock Terminal <span style="font-size:0.7rem; background:rgba(0,184,101,0.15); color:#00b865; padding:2px 6px; border-radius:4px; font-weight:700;">v2.0 Objective</span>
     </div>
-    <div class="header-subtitle">
-        全球市场主线追踪 · 20日K线缩略 · 客观数据聚合（不构成投资建议）
+    <div style="font-size: 0.85rem; opacity: 0.7; font-weight: 500;">
+        客观数据聚合引擎 | 全球市场主线 | 零主观预测
     </div>
 </div>
 """, unsafe_allow_html=True)
-st.caption("⚠️ 本工具仅做客观公开数据聚合与可视化，不生成任何投资评级、目标价推荐或仓位建议。所有结论性文字均来自第三方数据源的历史事实转述，请自行判断决策。")
+st.caption("⚠️ 本终端仅做客观公开数据聚合与可视化，绝不生成任何投资评级、目标价推荐或仓位建议。")
 
 # -------------------------------------------------------------------
 # 4. 全球市场主线概览 + 热门标的 + 设置（全部在主区域）
@@ -1151,62 +1151,6 @@ if ticker_input:
         - 毛利率: {info.get('grossMargins', 'N/A')}
         - ROE: {info.get('returnOnEquity', 'N/A')}
         """
-
-        st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">当前价格</div><div class="metric-value">{current_price_str}</div></div>', unsafe_allow_html=True)
-        with col2:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">市盈率 (PE TTM)</div><div class="metric-value">{pe_str}</div></div>', unsafe_allow_html=True)
-        with col3:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">总市值</div><div class="metric-value">{cap_str}</div></div>', unsafe_allow_html=True)
-        with col4:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">营收增速</div><div class="metric-value">{rev_str}</div></div>', unsafe_allow_html=True)
-        with col5:
-            st.markdown(f'<div class="metric-card"><div class="metric-label">细分行业</div><div class="metric-value">{industry[:8]}</div></div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-
-        # -------------------------------------------------------------------
-        # 5.1 公司专属事件优先展示：真实财报日期（yfinance earnings_dates）
-        # -------------------------------------------------------------------
-        st.markdown("### 📅 公司专属事件与宏观关注变量 <span style='font-size:0.78rem; opacity:0.6;'>(真实财报日期 + 客观宏观提示，非编造日期)</span>", unsafe_allow_html=True)
-
-        earnings_dates = all_data.get('earnings_dates')
-        if earnings_dates is not None and not earnings_dates.empty:
-            try:
-                next_earn = earnings_dates[earnings_dates.index > pd.Timestamp.now(tz=earnings_dates.index.tz)]
-                if not next_earn.empty:
-                    ed = next_earn.index[0]
-                    st.markdown(f"""
-                    <div class="event-card-row">
-                        <div class="event-left-box">
-                            <span class="event-date-badge">📅 {ed.strftime('%Y-%m-%d')}</span>
-                            <div class="event-title">下一次财报发布日期（yfinance 真实数据）</div>
-                        </div>
-                        <div class="event-right-box">
-                            <div class="event-analysis-text">数据来源：yfinance earnings_dates，为该公司专属真实事件，非通用宏观模板。</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.caption("⚠️ 未能获取到该公司下一次财报日期的真实数据。")
-            except Exception:
-                st.caption("⚠️ 财报日期数据解析失败。")
-        else:
-            st.caption("⚠️ 暂无该公司财报日期的真实数据（yfinance 未返回）。")
-
-        st.markdown("""
-        <div class="event-card-row">
-            <div class="event-left-box">
-                <span class="event-date-badge">📌 提示</span>
-                <div class="event-title">近期需关注的宏观变量（非具体日期，避免误导交易决策）</div>
-            </div>
-            <div class="event-right-box">
-                <div class="event-analysis-text">建议自行核实以下类别的最新官方日程：央行利率决议、CPI/PPI等通胀数据、GDP数据、美联储FOMC会议、行业政策会议。本工具不提供编造的具体日期，请以官方发布为准。</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
 
         st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
