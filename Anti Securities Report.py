@@ -119,7 +119,12 @@ st.markdown("""
     button[title="View app source"] {display: none !important;}
     
     /* 🎨 选项卡平均分布 (强制接管所有的 tabs 让其铺满) */
-    div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    div[data-baseweb="tab-list"] {
+        display: flex !important;
+        flex-grow: 1 !important;
+        width: 100% !important;
+    }
+    button[data-baseweb="tab"] {
         flex: 1 !important;
         justify-content: center !important;
         text-align: center !important;

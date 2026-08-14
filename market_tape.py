@@ -41,21 +41,21 @@ def get_market_tape_ui(used_key=""):
             content = str(row.get('内容', ''))
             text = title + content
             
-            # 公司公告识别逻辑：标题中含有类似于 "生益科技：" 这种模式 (2-8个字符的名称加上中文冒号)
-            # 或文中明确提到 股份、业绩等
-            is_company = bool(re.search(r'[\u4e00-\u9fa5A-Za-z0-9]{2,10}：', title) or re.search(r'[\u4e00-\u9fa5A-Za-z0-9]{2,10}：', content[:30]))
+            # 公司公告识别逻辑：标题开头是 2-10个字符的名称加上中文或英文冒号
+            is_company = bool(re.search(r'^.{2,10}[:：]', title))
+            
             if not is_company and any(k in text for k in ['股份', '股东', '业绩', '净利润', '营收', '同比', '环比', '分红', '派息', '增持', '减持', '回购', '子公司', '财报']):
                 is_company = True
             
-            # 分类优先级：政策 > 全球 > 行业 > 公司 (避免部门政策的新闻带冒号被误判为公司公告)
-            if any(k in text for k in kw_policy):
+            # 分类优先级：公司 > 政策 > 全球 > 行业
+            if is_company:
+                df_company.append(row)
+            elif any(k in text for k in kw_policy):
                 df_policy.append(row)
             elif any(k in text for k in kw_global):
                 df_global.append(row)
             elif any(k in text for k in kw_industry):
                 df_industry.append(row)
-            elif is_company:
-                df_company.append(row)
                 
         tabs = st.tabs([f"🏢 公司公告 ({len(df_company)})", f"🌍 全球事件 ({len(df_global)})", f"🏛️ 部门政策 ({len(df_policy)})", f"🏭 行业/机构 ({len(df_industry)})"])
         
