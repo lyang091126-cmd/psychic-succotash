@@ -1415,7 +1415,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 c4_a, c4_b = st.columns([0.95, 1.05])
                 with c4_a:
                     st.markdown("### 📈 缠论技术面数据摘要 <span style='font-size:0.75rem; opacity:0.6;'>⚠️ 简化版分型/中枢识别+RSI+BOLL，非买卖点建议</span>", unsafe_allow_html=True)
-                    st.markdown(f"```\n{chanlun_text}\n```")
+                    chanlun_text_ui = analyze_kline_and_chanlun(all_data['hist_1y']) if all_data and all_data.get('hist_1y') is not None else "暂无K线数据"
+                    st.markdown(f"```\n{chanlun_text_ui}\n```")
                     st.caption("📌 以上数据均基于真实K线计算得出，非AI编造。")
                 with c4_b:
                     if not all_data['hist_1y'].empty:
