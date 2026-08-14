@@ -1290,6 +1290,13 @@ if generate_btn:
             st.download_button(label="📥 下载报告 (Markdown)", data=ai_reply, file_name=f"{ticker_input}_客观数据报告.md", mime="text/markdown")
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
+        except Exception as e:
+            status_box.update(label="❌ **AI 调用失败**", state="error", expanded=True)
+            st.error(f"AI 调用失败: {e}")
+
+if ticker_input and all_data and all_data.get('hist_1y') is not None:
+    if True:
+
             # ===== 提前获取股票 Profile（真实机构持仓数据，无编造） =====
             st_prof = get_stock_profile(ticker_input, info, mapped_name)
             s_title_name = st_prof['display_name']
@@ -1519,7 +1526,3 @@ if generate_btn:
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
             st.markdown("---")
             st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
-
-        except Exception as e:
-            status_box.update(label="❌ **AI 调用失败**", state="error", expanded=True)
-            st.error(f"AI 调用失败: {e}")
