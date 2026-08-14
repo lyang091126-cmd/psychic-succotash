@@ -26,27 +26,36 @@ def get_market_tape_ui(used_key=""):
             
         st.caption(f"最新更新时间: {df_news['发布日期'].iloc[0]} {df_news['发布时间'].iloc[0]}")
         
+        import re
+        
         # 关键词分类字典
-        kw_company = ['股份', '股东', '业绩', '净利润', '营收', '同比', '环比', '分红', '派息', '董事', '高管', '增持', '减持', '回购', '拟', '协议', '合同', '订单', '子公司', '披露', '财报', '上市']
-        kw_global = ['美联储', '拜登', '普京', '俄乌', '中东', '降息', '加息', '欧洲', '英国', '日本', '美国', '纳指', '标普', '道指', '华尔街', '全球', '战争', '冲突', '大选']
-        kw_policy = ['发改委', '国务院', '央行', '人民银行', '证监会', '财政部', '工信部', '外汇局', '税务局', '银保监', '交通部', '商务部', '部委', '政策', '条例', '规定', '征求意见', '局', '委']
-        kw_industry = ['机构', '基金', '私募', '资本', '对冲基金', '巴克莱', '高盛', '摩根', '花旗', '行业', '赛道', '渗透率', '协会', '乘联会', '销量', '出货量', '市场规模']
+        kw_global = ['美国', '油价', '金价', '原油', '黄金', '美联储', '拜登', '普京', '俄乌', '中东', '降息', '加息', '欧洲', '英国', '日本', '纳指', '标普', '道指', '华尔街', '全球', '战争', '冲突', '大选', '联储']
+        kw_policy = ['发改委', '国务院', '央行', '人民银行', '证监会', '财政部', '工信部', '外汇局', '税务局', '税务部门', '银保监', '金管局', '交通部', '商务部', '住建部', '农业农村部', '农业部', '教育部', '科技部', '民政部', '司法部', '人社部', '卫健委', '统计局', '医保局', '林草局', '能源局', '药监局', '知识产权局', '海关总署', '政策', '条例', '规定', '征求意见', '局', '委']
+        kw_industry = ['机构', '基金', '私募', '资本', '对冲基金', '巴克莱', '高盛', '摩根', '花旗', '瑞银', '野村', '贝莱德', '桥水', '行业', '赛道', '渗透率', '协会', '乘联会', '销量', '出货量', '市场规模']
         
         # 分类数据
         df_company, df_global, df_policy, df_industry = [], [], [], []
         
         for _, row in df_news.head(100).iterrows():
-            text = str(row.get('标题', '')) + str(row.get('内容', ''))
+            title = str(row.get('标题', ''))
+            content = str(row.get('内容', ''))
+            text = title + content
             
-            # 分类逻辑：优先匹配政策，其次全球，其次公告，最后行业。不满足的丢弃。
+            # 公司公告识别逻辑：标题中含有类似于 "生益科技：" 这种模式 (2-8个字符的名称加上中文冒号)
+            # 或文中明确提到 股份、业绩等
+            is_company = bool(re.search(r'[\u4e00-\u9fa5A-Za-z0-9]{2,10}：', title) or re.search(r'[\u4e00-\u9fa5A-Za-z0-9]{2,10}：', content[:30]))
+            if not is_company and any(k in text for k in ['股份', '股东', '业绩', '净利润', '营收', '同比', '环比', '分红', '派息', '增持', '减持', '回购', '子公司', '财报']):
+                is_company = True
+            
+            # 分类优先级：政策 > 全球 > 行业 > 公司 (避免部门政策的新闻带冒号被误判为公司公告)
             if any(k in text for k in kw_policy):
                 df_policy.append(row)
             elif any(k in text for k in kw_global):
                 df_global.append(row)
-            elif any(k in text for k in kw_company):
-                df_company.append(row)
             elif any(k in text for k in kw_industry):
                 df_industry.append(row)
+            elif is_company:
+                df_company.append(row)
                 
         tabs = st.tabs([f"🏢 公司公告 ({len(df_company)})", f"🌍 全球事件 ({len(df_global)})", f"🏛️ 部门政策 ({len(df_policy)})", f"🏭 行业/机构 ({len(df_industry)})"])
         

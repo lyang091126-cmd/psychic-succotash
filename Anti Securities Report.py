@@ -118,15 +118,11 @@ st.markdown("""
     div[data-testid="stToolbar"] {display: none !important;}
     button[title="View app source"] {display: none !important;}
     
-    /* 🎨 选项卡平均分布 (让盘口和个股的四个选项卡均匀铺满) */
-    .stTabs [data-baseweb="tab-list"] {
-        display: flex;
-        width: 100%;
-    }
-    .stTabs [data-baseweb="tab"] {
-        flex: 1;
-        justify-content: center;
-        text-align: center;
+    /* 🎨 选项卡平均分布 (强制接管所有的 tabs 让其铺满) */
+    div[data-testid="stTabs"] button[data-baseweb="tab"] {
+        flex: 1 !important;
+        justify-content: center !important;
+        text-align: center !important;
     }
     .stApp > header {display: none !important;}
     a[href*="github.com"] {display: none !important;}
