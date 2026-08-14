@@ -117,6 +117,17 @@ st.markdown("""
     div[data-testid="stStatusWidget"] {display: none !important;}
     div[data-testid="stToolbar"] {display: none !important;}
     button[title="View app source"] {display: none !important;}
+    
+    /* 🎨 选项卡平均分布 (让盘口和个股的四个选项卡均匀铺满) */
+    .stTabs [data-baseweb="tab-list"] {
+        display: flex;
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        flex: 1;
+        justify-content: center;
+        text-align: center;
+    }
     .stApp > header {display: none !important;}
     a[href*="github.com"] {display: none !important;}
     ul[data-testid="main-menu-list"] {display: none !important;}
