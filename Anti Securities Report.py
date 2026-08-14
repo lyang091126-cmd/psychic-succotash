@@ -100,13 +100,22 @@ def resolve_ticker(raw_input):
 # 1. 页面基本配置与视觉系统
 # -------------------------------------------------------------------
 st.set_page_config(
-    page_title="Anti Stock Report - 客观数据聚合工具 v2.0",
-    page_icon="📊",
+    page_title="Anti Stock Report - 客观数据聚合终端 v2.0",
+    page_icon="🎯",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# 自定义 CSS
+st.sidebar.title("🧭 功能导航")
+app_mode = st.sidebar.radio("选择模块:", ["🎯 个股终端 (单点深度)", "📡 实时盘口 (全市场快讯)"])
+st.sidebar.markdown("---")
+
+if app_mode == "📡 实时盘口 (全市场快讯)":
+    from market_tape import get_market_tape_ui
+    get_market_tape_ui()
+    st.stop()
+
+# 2. 全局样式定制
 st.markdown("""
 <style>
     /* 🛡️ 终极源代码与隐私安全防护：彻底隐藏前端右上角 GitHub 图标、View Source 按钮与 Streamlit 菜单页脚 */
