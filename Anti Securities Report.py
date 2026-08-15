@@ -118,18 +118,22 @@ st.markdown("""
     div[data-testid="stToolbar"] {display: none !important;}
     button[title="View app source"] {display: none !important;}
     
-    /* 🎨 选项卡平均分布 (强制接管所有的 tabs 让其铺满) */
+    /* 🎨 选项卡平均分布 (终极穿透强制铺满) */
     div[data-testid="stTabs"], 
     div[data-testid="stTabs"] > div[data-baseweb="tabs"],
+    div[role="tablist"],
     div[data-baseweb="tab-list"] {
         display: flex !important;
         width: 100% !important;
         flex-grow: 1 !important;
+        justify-content: space-between !important;
     }
+    button[role="tab"],
     button[data-baseweb="tab"] {
         flex: 1 1 0 !important;
         justify-content: center !important;
         text-align: center !important;
+        min-width: 0 !important;
     }
     .stApp > header {display: none !important;}
     a[href*="github.com"] {display: none !important;}
