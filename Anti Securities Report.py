@@ -119,13 +119,15 @@ st.markdown("""
     button[title="View app source"] {display: none !important;}
     
     /* 🎨 选项卡平均分布 (强制接管所有的 tabs 让其铺满) */
+    div[data-testid="stTabs"], 
+    div[data-testid="stTabs"] > div[data-baseweb="tabs"],
     div[data-baseweb="tab-list"] {
         display: flex !important;
-        flex-grow: 1 !important;
         width: 100% !important;
+        flex-grow: 1 !important;
     }
     button[data-baseweb="tab"] {
-        flex: 1 !important;
+        flex: 1 1 0 !important;
         justify-content: center !important;
         text-align: center !important;
     }
@@ -605,7 +607,8 @@ st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 # --- 4.5 众包财务预测 (Crowdsourcing) ---
 try:
     from crowdsource_agent import get_crowdsource_ui
-    get_crowdsource_ui(api_key_input, ticker_input)
+    tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
+    get_crowdsource_ui(api_key_input, tk_for_crowd)
 except Exception as e:
     st.error(f"众包预测组件加载失败: {e}")
 

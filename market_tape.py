@@ -41,11 +41,8 @@ def get_market_tape_ui(used_key=""):
             content = str(row.get('内容', ''))
             text = title + content
             
-            # 公司公告识别逻辑：标题开头是 2-10个字符的名称加上中文或英文冒号
-            is_company = bool(re.search(r'^.{2,10}[:：]', title))
-            
-            if not is_company and any(k in text for k in ['股份', '股东', '业绩', '净利润', '营收', '同比', '环比', '分红', '派息', '增持', '减持', '回购', '子公司', '财报']):
-                is_company = True
+            # 公司公告识别逻辑：严格依靠 标题开头是 2-10个字符的名称加上中文或英文冒号
+            is_company = bool(re.search(r'^.{2,12}[:：]', title))
             
             # 分类优先级：公司 > 政策 > 全球 > 行业
             if is_company:
