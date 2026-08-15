@@ -1523,6 +1523,11 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     positive_kw = ['增长', '突破', '上涨', '创新高', '超预期', '合作', '获批', '中标', 'beat', 'surge', 'rally', 'upgrade', 'growth']
                     found_positive = False
                     all_news_items = []
+                    
+                    # 取出新闻数据
+                    yf_news = all_data.get('news', []) if all_data else []
+                    ak_news = all_data.get('ak_news') if all_data else None
+                    
                     for n in yf_news[:8]:
                         all_news_items.append({'title': n.get('title', ''), 'source': n.get('publisher', '')})
                     if ak_news is not None and not ak_news.empty:
