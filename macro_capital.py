@@ -134,7 +134,7 @@ def render_macro_capital_board():
                     '名称': False,
                     '颜色': False
                 }
-                custom_data = ['涨跌幅', '当前价', '成交额(亿元)', '成交额(亿元)']
+                custom_data = ['涨跌幅', '当前价', '成交额(亿元)']
             else:
                 metric_x = '主力净流入(亿元)'
                 title_suffix = "主力资金净流入 (大单+超大单)"
