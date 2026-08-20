@@ -11,6 +11,40 @@ import math
 from plotly.subplots import make_subplots
 from openai import OpenAI
 
+st.set_page_config(
+    page_title="Anti Stock Report - 智能投研终端",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# 注入全局 UI 优化 CSS
+st.markdown("""
+<style>
+    /* 增加主容器的两侧边距，避免贴边，同时增加上下呼吸感 */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* 隐藏默认 Header 和 Footer */
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* 模块化卡片容器样式模拟 */
+    div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] {
+        background-color: rgba(20, 24, 33, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # -------------------------------------------------------------------
 # 0. 智能股票名称/中文映射解析引擎
 # -------------------------------------------------------------------
@@ -99,12 +133,7 @@ def resolve_ticker(raw_input):
 # -------------------------------------------------------------------
 # 1. 页面基本配置与视觉系统
 # -------------------------------------------------------------------
-st.set_page_config(
-    page_title="Anti Stock Report - 客观数据聚合终端 v2.0",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# (Moved to top of file)
 
 # 2. 全局样式定制
 st.markdown("""

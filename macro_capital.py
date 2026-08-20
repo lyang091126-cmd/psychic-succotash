@@ -216,10 +216,14 @@ def render_macro_capital_board():
             )
             
             fig_tree.update_layout(
-                margin=dict(t=10, l=10, r=10, b=10),
-                paper_bgcolor='rgba(0,0,0,0)',
+                height=700,
+                width=None,
+                margin=dict(l=40, r=40, t=60, b=40),
+                title_font_size=20,
+                xaxis=dict(tickangle=-45, tickfont=dict(size=11)),
+                yaxis=dict(tickfont=dict(size=11)),
                 plot_bgcolor='rgba(0,0,0,0)',
-                height=550,
+                paper_bgcolor='rgba(0,0,0,0)',
                 coloraxis_colorbar=dict(
                     title="净流入(亿)",
                     thicknessmode="pixels", thickness=15,
