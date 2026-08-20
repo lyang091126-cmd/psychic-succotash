@@ -1,7 +1,99 @@
 import akshare as ak
 import datetime
-from openai import OpenAI
+import json
+import os
 import streamlit as st
+from openai import OpenAI
+
+CACHE_FILE = "cailianshe_news_cache.json"
+
+def load_cached_news():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_cls_news():
+    """Fetch new cls news and update the local JSON cache."""
+    try:
+        df_news = ak.stock_info_global_cls()
+    except Exception as e:
+        # If fetch fails, we just return whatever is in the cache
+        return load_cached_news()
+    
+    if df_news.empty:
+        return load_cached_news()
+        
+    # Process fetched news
+    fetched_list = df_news.to_dict('records')
+    
+    # Load existing cache
+    history = load_cached_news()
+    
+    # Deduplicate and Append
+    # Key: 发布日期 + 发布时间 + 标题
+    existing_keys = set()
+    for item in history:
+        key = f"{item.get('发布日期', '')}_{item.get('发布时间', '')}_{item.get('标题', '')}"
+        existing_keys.add(key)
+        
+    for item in fetched_list:
+        key = f"{item.get('发布日期', '')}_{item.get('发布时间', '')}_{item.get('标题', '')}"
+        if key not in existing_keys:
+            history.append(item)
+            existing_keys.add(key)
+            
+    # Prune (keep only last 72 hours)
+    now = datetime.datetime.now()
+    pruned_history = []
+    for item in history:
+        date_str = item.get('发布日期')
+        time_str = item.get('发布时间')
+        try:
+            if date_str and time_str:
+                dt_str = f"{date_str} {time_str}"
+                dt_obj = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                if (now - dt_obj).total_seconds() <= 72 * 3600:
+                    pruned_history.append(item)
+            else:
+                pruned_history.append(item) # Keep if can't parse
+        except:
+            pruned_history.append(item)
+            
+    # Save back to JSON
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(pruned_history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        pass
+        
+    return pruned_history
+
+def classify_news(title, content):
+    text = (str(title) + " " + str(content)).lower()
+    
+    # Priority 1: 全球事件 (Global Events) - 最高优先级拦截
+    global_kws = ['美国', '美联储', '非农', 'cpi', '欧洲', '日央行', '拜登', '普京', '国际', '华尔街', '纳指', '标普', '海外', '世贸', '联储']
+    if any(kw in text for kw in global_kws):
+        return "全球事件"
+        
+    # Priority 2: 部门政策 (Domestic Policy) - 排除掉全球事件后
+    policy_kws = ['发改委', '央行', '国务院', '住建部', '财政部', '证监会', '工信部', '商务部', '印发', '条例', '新规', '十四五', '征求意见']
+    if any(kw in text for kw in policy_kws):
+        return "部门政策"
+        
+    # Priority 3: 公司公告 (Company Announcements)
+    company_kws = ['财报', '营收', '净利', '涨停', '跌停', '股份', '有限公司', '拟收购', '分红', 'st', '复牌', '股东减持', '实控人']
+    if any(kw in text for kw in company_kws):
+        return "公司公告"
+        
+    # Priority 4: 行业/机构 (Industry/Institutions) - 默认兜底
+    return "行业/机构"
+
 
 def get_market_tape_ui(used_key=""):
     st.markdown("---")
@@ -10,57 +102,40 @@ def get_market_tape_ui(used_key=""):
         st.markdown("### 📡 全市场实时盘口 (财联社全球快讯)")
         st.markdown("<div style='font-size:0.85rem; opacity:0.8;'>此模块实时抓取财联社最新电报，并可通过 AI 提取客观事件影响，绝不提供买卖建议。</div><br>", unsafe_allow_html=True)
         
-        try:
-            with st.spinner("正在实时拉取财联社电报/快讯..."):
-                df_news = ak.stock_info_global_cls()
-        except Exception as e:
-            st.error(f"拉取数据失败: {e}")
+        with st.spinner("正在同步全球快讯..."):
+            news_list = fetch_cls_news()
+            
+        if not news_list:
+            st.warning("暂无快讯数据，可能是首次拉取失败或接口限流。")
             return
             
-        if df_news.empty:
-            st.warning("暂无最新快讯")
-            return
+        # Sort by datetime descending
+        def get_dt(item):
+            try:
+                return datetime.datetime.strptime(f"{item.get('发布日期', '')} {item.get('发布时间', '')}", "%Y-%m-%d %H:%M:%S")
+            except:
+                return datetime.datetime.min
+        news_list.sort(key=get_dt, reverse=True)
             
-        # 翻转数据：财联社接口默认最老的新闻在最前面，我们需要最新的在最前面
-        df_news = df_news.iloc[::-1].reset_index(drop=True)
-            
-        st.caption(f"最新更新时间: {df_news['发布日期'].iloc[0]} {df_news['发布时间'].iloc[0]}")
-        
-        import re
-        
-        # 关键词分类字典
-        kw_global = ['美国', '油价', '金价', '原油', '黄金', '美联储', '拜登', '普京', '俄乌', '中东', '降息', '加息', '欧洲', '英国', '日本', '纳指', '标普', '道指', '华尔街', '全球', '战争', '冲突', '大选', '联储']
-        kw_policy = ['发改委', '国务院', '央行', '人民银行', '证监会', '财政部', '工信部', '外汇局', '税务局', '税务部门', '银保监', '金管局', '交通部', '商务部', '住建部', '农业农村部', '农业部', '教育部', '科技部', '民政部', '司法部', '人社部', '卫健委', '统计局', '医保局', '林草局', '能源局', '药监局', '知识产权局', '海关总署', '政策', '条例', '规定', '征求意见', '局', '委']
-        kw_industry = ['机构', '基金', '私募', '资本', '对冲基金', '巴克莱', '高盛', '摩根', '花旗', '瑞银', '野村', '贝莱德', '桥水', '行业', '赛道', '渗透率', '协会', '乘联会', '销量', '出货量', '市场规模']
+        st.caption(f"最新更新时间: {news_list[0].get('发布日期')} {news_list[0].get('发布时间')}")
         
         # 分类数据
         df_company, df_global, df_policy, df_industry = [], [], [], []
         
-        for _, row in df_news.head(100).iterrows():
-            title = str(row.get('标题', ''))
-            content = str(row.get('内容', ''))
-            text = title + content
-            
-            # 公司公告识别逻辑：严格依靠 标题开头是 2-10个字符的名称加上中文或英文冒号
-            is_company = bool(re.search(r'^.{2,12}[:：]', title))
-            
-            # 分类优先级：公司 > 政策 > 全球 > 行业
-            if is_company:
-                df_company.append(row)
-            elif any(k in text for k in kw_policy):
-                df_policy.append(row)
-            elif any(k in text for k in kw_global):
-                df_global.append(row)
-            elif any(k in text for k in kw_industry):
-                df_industry.append(row)
+        for row in news_list:
+            category = classify_news(row.get('标题', ''), row.get('内容', ''))
+            if category == "公司公告": df_company.append(row)
+            elif category == "全球事件": df_global.append(row)
+            elif category == "部门政策": df_policy.append(row)
+            else: df_industry.append(row)
                 
         tabs = st.tabs([f"🏢 公司公告 ({len(df_company)})", f"🌍 全球事件 ({len(df_global)})", f"🏛️ 部门政策 ({len(df_policy)})", f"🏭 行业/机构 ({len(df_industry)})"])
         
-        def render_news_list(news_list, prefix):
-            if not news_list:
+        def render_news_list(c_list, prefix):
+            if not c_list:
                 st.info("暂无该分类的最新动态")
                 return
-            for i, row in enumerate(news_list):
+            for i, row in enumerate(c_list[:50]): # Display up to 50 per tab to avoid UI lag
                 title = row.get('标题', '')
                 content = row.get('内容', '')
                 pub_time = row.get('发布时间', '')
@@ -71,8 +146,10 @@ def get_market_tape_ui(used_key=""):
                 with st.expander(f"🕒 {pub_time} | {title}", expanded=(i==0)):
                     st.write(content)
                     
-                    btn_key = f"ai_btn_tape_{prefix}_{i}"
-                    res_key = f"ai_res_tape_{prefix}_{i}"
+                    # Create a safe unique key
+                    safe_title_hash = abs(hash(title)) % 10000
+                    btn_key = f"ai_btn_tape_{prefix}_{i}_{safe_title_hash}"
+                    res_key = f"ai_res_tape_{prefix}_{i}_{safe_title_hash}"
                     
                     if st.button("🤖 AI 深度客观解读", key=btn_key):
                         if not used_key:
