@@ -930,41 +930,36 @@ def analyze_kline_and_chanlun(df):
     segments = segments[-5:]
     segments_html = "".join([f"<div style='background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:5px; margin-bottom:5px; font-size:0.85rem;'>{s}</div>" for s in segments]) if segments else "<div style='opacity:0.6'>近半年未见超10%波段</div>"
 
-    html = f"""
-    <div style="background:rgba(20,24,33,0.5); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
-        <h4 style="color:#38bdf8; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
-        
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
-            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
-                <div style="font-size:0.8rem; color:#94a3b8;">最新收盘 / 趋势</div>
-                <div style="font-size:1rem; font-weight:600; color:{'#ef4444' if pct_1y>=0 else '#00b865'};">{recent_close:.2f} ({pct_1y:+.2f}%)</div>
-                <div style="font-size:0.8rem;">{trend_status}</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
-                <div style="font-size:0.8rem; color:#94a3b8;">1年最高 / 最低</div>
-                <div style="font-size:1rem; font-weight:600;">{df['High'].max():.2f} / {df['Low'].min():.2f}</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
-                <div style="font-size:0.8rem; color:#94a3b8;">近60日中枢轨 (ZG/ZD)</div>
-                <div style="font-size:1rem; font-weight:600; color:#fbbf24;">{zg_display:.2f} / {zd_display:.2f}</div>
-                <div style="font-size:0.75rem; opacity:0.7; margin-top:3px;">{zhongshu_note}</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
-                <div style="font-size:0.8rem; color:#94a3b8;">MACD / 辅助判断</div>
-                <div style="font-size:1rem; font-weight:600;">{macd_recent:.3f}</div>
-                <div style="font-size:0.75rem; color:{'#ef4444' if '底背驰' in divergence else '#00b865' if '顶背驰' in divergence else '#94a3b8'}; margin-top:3px;">{divergence}</div>
-            </div>
-        </div>
-        
-        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
-            <span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 8px; border-radius:4px; font-size:0.8rem;">均线支撑: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}</span>
-            <span style="background:rgba(251,191,36,0.1); color:#fbbf24; padding:4px 8px; border-radius:4px; font-size:0.8rem;">{rsi_status}</span>
-        </div>
-        
-        <div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin-bottom:10px;">📉 波段起止明细 (最近5条)</div>
-        {segments_html}
-    </div>
-    """
+    html = f"""<div style="background:rgba(20,24,33,0.5); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+<h4 style="color:#38bdf8; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
+<div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+<div style="font-size:0.8rem; color:#94a3b8;">最新收盘 / 趋势</div>
+<div style="font-size:1rem; font-weight:600; color:{'#ef4444' if pct_1y>=0 else '#00b865'};">{recent_close:.2f} ({pct_1y:+.2f}%)</div>
+<div style="font-size:0.8rem;">{trend_status}</div>
+</div>
+<div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+<div style="font-size:0.8rem; color:#94a3b8;">1年最高 / 最低</div>
+<div style="font-size:1rem; font-weight:600;">{df['High'].max():.2f} / {df['Low'].min():.2f}</div>
+</div>
+<div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+<div style="font-size:0.8rem; color:#94a3b8;">近60日中枢轨 (ZG/ZD)</div>
+<div style="font-size:1rem; font-weight:600; color:#fbbf24;">{zg_display:.2f} / {zd_display:.2f}</div>
+<div style="font-size:0.75rem; opacity:0.7; margin-top:3px;">{zhongshu_note}</div>
+</div>
+<div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+<div style="font-size:0.8rem; color:#94a3b8;">MACD / 辅助判断</div>
+<div style="font-size:1rem; font-weight:600;">{macd_recent:.3f}</div>
+<div style="font-size:0.75rem; color:{'#ef4444' if '底背驰' in divergence else '#00b865' if '顶背驰' in divergence else '#94a3b8'}; margin-top:3px;">{divergence}</div>
+</div>
+</div>
+<div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+<span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 8px; border-radius:4px; font-size:0.8rem;">均线支撑: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}</span>
+<span style="background:rgba(251,191,36,0.1); color:#fbbf24; padding:4px 8px; border-radius:4px; font-size:0.8rem;">{rsi_status}</span>
+</div>
+<div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin-bottom:10px;">📉 波段起止明细 (最近5条)</div>
+{segments_html}
+</div>"""
     return html
 
 # 产业链知识库：按行业/板块映射上中下游代表企业与下游分析
@@ -1438,7 +1433,13 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">📌 【{s_title_name}】 客观数据总览</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源（yfinance/akshare）的客观历史记录，不构成、也不包含本站任何投资建议、评级、目标价推荐或仓位建议。")
 
-                c1_a, c1_b = st.columns([1.05, 0.95])
+                has_inst = bool(st_prof['inst_names'] and st_prof['inst_shares'])
+                if has_inst:
+                    c1_a, c1_b = st.columns([1.05, 0.95])
+                else:
+                    _, c1_a, _ = st.columns([0.15, 0.7, 0.15])
+                    c1_b = None
+
                 with c1_a:
                     st.markdown("### 📊 第三方分析师评级分布 (历史事实)")
                     recs_df_top = all_data.get('recommendations')
@@ -1466,7 +1467,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                                     int(latest_r.get('strongSell',0) or 0)
                                 ]
                                 labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
-                                colors = ['#00b865', '#34d399', '#fbbf24', '#f87171', '#ef4444']
+                                colors = ['#ef4444', '#f87171', '#fbbf24', '#34d399', '#00b865']
                                 df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
                                 df_pie = df_pie[df_pie['Value'] > 0]
                                 
@@ -1488,8 +1489,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         else:
                             st.info("暂无评级数据")
 
-                with c1_b:
-                    if st_prof['inst_names'] and st_prof['inst_shares']:
+                if c1_b is not None:
+                    with c1_b:
                         fig_inst = go.Figure(go.Bar(
                             x=st_prof['inst_shares'], y=st_prof['inst_names'], orientation='h',
                             marker_color=['#00b865', '#38bdf8', '#fbbf24', '#a855f7', '#94a3b8'],
@@ -1501,8 +1502,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                             paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
                         )
                         st.plotly_chart(fig_inst, use_container_width=True)
-                    else:
-                        st.info("⚠️ 暂无该标的真实机构持仓数据（或非A股无对应接口）。为避免误导，不展示编造数据。")
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
