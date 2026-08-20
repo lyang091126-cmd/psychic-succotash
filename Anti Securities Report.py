@@ -109,149 +109,6 @@ st.set_page_config(
 # 2. 全局样式定制
 st.markdown("""
 <style>
-    /* 🛡️ 终极源代码与隐私安全防护：彻底隐藏前端右上角 GitHub 图标、View Source 按钮与 Streamlit 菜单页脚 */
-    #MainMenu {visibility: hidden !important; display: none !important;}
-    footer {visibility: hidden !important; display: none !important;}
-    header {visibility: hidden !important; display: none !important;}
-    div[data-testid="stDecoration"] {display: none !important;}
-    div[data-testid="stStatusWidget"] {display: none !important;}
-    div[data-testid="stToolbar"] {display: none !important;}
-    button[title="View app source"] {display: none !important;}
-    
-    /* 🎨 选项卡平均分布 (终极穿透强制铺满) */
-    div[data-testid="stTabs"], 
-    div[data-testid="stTabs"] > div[data-baseweb="tabs"],
-    div[role="tablist"],
-    div[data-baseweb="tab-list"] {
-        display: flex !important;
-        width: 100% !important;
-        flex-grow: 1 !important;
-        justify-content: space-between !important;
-    }
-    button[role="tab"],
-    button[data-baseweb="tab"] {
-        flex: 1 1 0 !important;
-        justify-content: center !important;
-        text-align: center !important;
-        min-width: 0 !important;
-    }
-    .stApp > header {display: none !important;}
-    a[href*="github.com"] {display: none !important;}
-    ul[data-testid="main-menu-list"] {display: none !important;}
-
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    section[data-testid="stSidebar"] { display: none; }
-
-    /* 顶部 Hero Banner */
-    .header-banner {
-        background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(0,184,101,0.05) 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 16px;
-        border: 1px solid rgba(226,232,240,0.18);
-        display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 1.4rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-    }
-    /* 全局 Header 顶栏 (自适应深浅主题) */
-    .header-box {
-        background: linear-gradient(135deg, rgba(0, 184, 101, 0.12) 0%, rgba(56, 189, 248, 0.12) 100%);
-        border: 1px solid rgba(0, 184, 101, 0.25);
-        border-radius: 16px;
-        padding: 1.2rem 1.6rem;
-        display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 1.4rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-    }
-    .header-title {
-        font-size: 2.2rem; font-weight: 800; margin: 0;
-        display: flex; align-items: center; gap: 0.8rem;
-        letter-spacing: -0.5px;
-        color: var(--text-color, #ffffff);
-    }
-    .header-subtitle { opacity: 0.85; font-size: 0.95rem; font-weight: 500; color: var(--text-color, inherit); }
-    .badge-green { background-color: #dcfce7; color: #15803d; font-size: 0.8rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 9999px; border: 1px solid #bbf7d0; vertical-align: middle; }
-
-    /* 全球市场卡片样式完整恢复 (自适应深浅) */
-    .market-card {
-        background: rgba(255, 255, 255, 0.04) !important;
-        border: 1px solid rgba(226, 232, 240, 0.15) !important;
-        border-radius: 12px !important;
-        padding: 0.9rem 1rem !important;
-        text-align: center !important;
-        position: relative !important;
-        overflow: hidden !important;
-        margin-bottom: 0.5rem !important;
-    }
-    .market-card-hot {
-        border-color: rgba(0, 184, 101, 0.5) !important;
-        box-shadow: 0 0 12px rgba(0, 184, 101, 0.15) !important;
-    }
-    .market-flag { font-size: 1.4rem; margin-bottom: 0.2rem; }
-    .market-name { font-size: 0.8rem; font-weight: 600; opacity: 0.85; margin: 0.15rem 0; color: var(--text-color, inherit); }
-    .market-index { font-size: 1.15rem; font-weight: 700; color: var(--text-color, #f8fafc); }
-    .market-chg-up { color: #00b865; font-size: 0.82rem; font-weight: 600; }
-    .market-chg-down { color: #ef4444; font-size: 0.82rem; font-weight: 600; }
-    .market-sector { font-size: 0.72rem; opacity: 0.75; margin-top: 0.3rem; color: var(--text-color, inherit); }
-    .market-badge-hot {
-        position: absolute; top: 6px; right: 8px;
-        background: #00b865; color: white; font-size: 0.6rem; font-weight: 700;
-        padding: 1px 6px; border-radius: 6px;
-    }
-
-    /* 5维基础指标卡片 (固定 80px 高度与居中对齐，自适应 Light/Dark 模式) */
-    .metric-card {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(226,232,240,0.15);
-        border-radius: 12px;
-        padding: 0.8rem 0.6rem;
-        text-align: center;
-        margin-bottom: 0.6rem;
-        height: 80px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-    }
-    .metric-label { font-size: 0.78rem; opacity: 0.8; margin-bottom: 0.3rem; font-weight: 500; color: var(--text-color, inherit); }
-    .metric-value { font-size: 1.15rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; color: var(--text-color, #f8fafc); }
-
-    /* 📅 大事日历左右对照样式 */
-    .event-card-row {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(226,232,240,0.12);
-        border-radius: 12px;
-        padding: 1rem 1.2rem;
-        margin-bottom: 0.8rem;
-        display: flex;
-        align-items: center;
-        gap: 1.2rem;
-        transition: all 0.2s ease;
-    }
-    .event-card-row:hover {
-        border-color: rgba(0,184,101,0.4);
-        background: rgba(255,255,255,0.05);
-    }
-    .event-left-box {
-        flex: 0 0 42%;
-        border-right: 1px dashed rgba(226,232,240,0.15);
-        padding-right: 1rem;
-    }
-    .event-right-box {
-        flex: 1;
-        padding-left: 0.5rem;
-    }
-    .event-date-badge {
-        display: inline-block;
-        background: rgba(0,184,101,0.15);
-        color: #00b865;
-        font-weight: 700;
-        font-size: 0.82rem;
-        padding: 2px 8px;
-        border-radius: 6px;
-        margin-bottom: 0.3rem;
-    }
-    .event-title { font-weight: 700; font-size: 0.95rem; color: var(--text-color, #ffffff); margin-bottom: 0.25rem; }
     .event-expectation { font-size: 0.82rem; opacity: 0.85; color: #fbbf24; }
     .event-analysis-title { font-weight: 600; font-size: 0.85rem; color: #38bdf8; margin-bottom: 0.2rem; }
     .event-analysis-text { font-size: 0.85rem; opacity: 0.88; line-height: 1.5; color: var(--text-color, #e2e8f0); }
@@ -573,31 +430,17 @@ for j, s in enumerate(display_stocks):
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
 # --- 4.3 设置行（物理对称级对齐） ---
-set_c1, set_c2, set_c3, set_c4, set_c5 = st.columns([2, 2.3, 2, 2.7, 1.8])
+set_c1, set_c2, set_c3 = st.columns([3, 2, 2])
 with set_c1:
-    user_ticker_raw = st.text_input("股票代码 / 名称:", value=st.session_state.selected_ticker, help="可输入 AAPL, 600519.SS，或中文如「苹果」、「新易盛」、「特斯拉」")
+    user_ticker_raw = st.text_input("代码 / 简称 (例如 AAPL, 600519.SS)", value=st.session_state.selected_ticker)
 with set_c2:
-    invest_style = st.selectbox("分析流派:", [
-        "全维度综合信息聚合 (推荐)",
-        "基本面数据速览",
-        "成长性数据速览",
-        "缠论与技术面数据",
-        "事件与公告速览",
-    ])
+    api_key_input = st.text_input("API 密钥 (必填)", value="", type="password")
 with set_c3:
-    holding_period = st.selectbox("关注周期:", ["中期 (1-6个月)", "超短期 (日内至数日)", "短期 (1-4周)", "长期 (1年以上)"])
-with set_c4:
-    # 🔒 安全策略：绝不从环境变量/st.secrets 预填开发者自己的 Key。
-    # Key 只能来自当前用户本次会话的手动输入，不写入磁盘、不写日志。
-    api_key_input = st.text_input(
-        "API 密钥:", value="", type="password",
-        help="🔒 密钥仅在您的浏览器会话中使用，不会被存储、上传或记录到日志。请前往智谱清言 (bigmodel.cn) 或 OpenAI 官网申请属于您自己的 API Key。"
-    )
-
-with set_c5:
-    generate_btn = st.button("🚀 生成数据聚合报告", key="btn_main_generate", use_container_width=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    generate_btn = st.button("🚀 生成研报", key="btn_main_generate", use_container_width=True)
 
 risk_preference = "稳健型"
+
 
 # --- 4.4 【新增】全市场实时盘口 (大盘口) ---
 try:
@@ -1328,18 +1171,35 @@ if generate_btn:
             ai_reply = response.choices[0].message.content
             status_box.update(label="✅ **客观数据摘要报告已生成！**", state="complete", expanded=False)
 
-            st.markdown("---")
-            st.subheader(f"📊 {ticker_input} 客观数据聚合报告")
-            st.markdown('<span class="data-ai-badge">⚠️ 以下摘要由 AI 生成，仅为对真实数据的转述整理，不构成投资建议</span>', unsafe_allow_html=True)
-            st.markdown(ai_reply)
-            st.download_button(label="📥 下载报告 (Markdown)", data=ai_reply, file_name=f"{ticker_input}_客观数据报告.md", mime="text/markdown")
-            st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-
         except Exception as e:
             status_box.update(label="❌ **AI 调用失败**", state="error", expanded=True)
             st.error(f"AI 调用失败: {e}")
 
 if ticker_input and all_data and all_data.get('hist_1y') is not None:
+    try:
+        # Extract metrics
+        info = all_data.get('info', {})
+        price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+        prev_close = info.get('previousClose', price)
+        chg_pct = round((price - prev_close) / prev_close * 100, 2) if prev_close else 0
+        pe_ttm = round(info.get('trailingPE', 0), 2)
+        fwd_pe = round(info.get('forwardPE', 0), 2)
+        inst_pct = round(info.get('heldPercentInstitutions', 0) * 100, 2)
+        risk_level = "极高" if chg_pct < -5 else "中性" if -5 <= chg_pct <= 5 else "稳健"
+        
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("最新股价/涨跌", f"{price}", f"{chg_pct}%", delta_color="normal" if chg_pct >= 0 else "inverse")
+        m2.metric("Trailing PE / Forward PE", f"{pe_ttm}", f"{fwd_pe} Fwd", delta_color="off")
+        m3.metric("机构持仓比例", f"{inst_pct}%", delta_color="off")
+        m4.metric("AI 综合风险等级", risk_level, delta_color="off")
+    except Exception as e:
+        pass
+    
+    st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+    
+    st.markdown("### 📊 Executive Summary")
+    exec_c1, exec_c2 = st.columns([2, 3])
+
     if True:
 
             # ===== 提前获取股票 Profile（真实机构持仓数据，无编造） =====
@@ -1359,6 +1219,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             # ===== 客观数据总览（已删除：三票制表决、评分表、独立性判定卡、法证排查表、
             # 看多逻辑vs伪证条件表、"强烈买入"Banner、机构目标价推荐Banner、仓位建议） =====
 
+            
             # ===== 差异化功能2：五维雷达图评分计算 =====
             radar_scores = {'估值 (Valuation)': 50, '成长 (Growth)': 50, '动能 (Momentum)': 50, '盈利 (Profitability)': 50, '健康 (Health)': 50}
             try:
@@ -1376,9 +1237,42 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             except Exception:
                 pass
 
-            tab_overview, tab_radar, tab_insiders, tab_news = st.tabs(["📊 概览 (Overview)", "🕸️ 五维雷达 (Metrics)", "🏛️ 机构与资金 (Insiders)", "📰 相关新闻 (News)"])
+            with exec_c1:
+                import pandas as pd
+                df_radar = pd.DataFrame(dict(r=list(radar_scores.values()), theta=list(radar_scores.keys())))
+                fig_radar = px.line_polar(df_radar, r='r', theta='theta', line_close=True, template="plotly_dark")
+                fig_radar.update_traces(fill='toself', line_color='#00F2FE', fillcolor='rgba(0, 242, 254, 0.15)')
+                fig_radar.update_layout(
+                    polar=dict(
+                        radialaxis=dict(visible=False, range=[0, 100]),
+                        angularaxis=dict(color='#F0F4F8', gridcolor='rgba(255,255,255,0.1)'),
+                        bgcolor='rgba(0,0,0,0)'
+                    ), 
+                    margin=dict(l=40, r=40, t=20, b=20), 
+                    height=300,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig_radar, use_container_width=True, config={'displayModeBar': False})
 
-            with tab_radar:
+            with exec_c2:
+                st.markdown('<div class="bg-card-glass" style="padding:15px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
+                st.markdown("#### 🧠 AI 反共识摘要总结")
+                st.markdown('<span class="badge-neutral">此摘要由 AI 生成，仅为对真实数据的客观陈述整理</span>', unsafe_allow_html=True)
+                
+                try:
+                    st.markdown(ai_reply if 'ai_reply' in locals() else "等待 AI 报告生成...", unsafe_allow_html=True)
+                except:
+                    st.markdown("等待 AI 报告生成...")
+                    
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+            tab1, tab2, tab3, tab4 = st.tabs(["🎯 反共识诊断", "📊 财报与估值穿透", "🏛️ 机构与资金追踪", "📰 AI 中性舆情解构"])
+
+
+            with tab2:
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">🕸️ 【{s_title_name}】 客观五维雷达图</div>', unsafe_allow_html=True)
                 st.caption("📌 本雷达图基于 yfinance 提取的绝对财务指标，并使用固定映射逻辑归一化到 0-100 分位。此图仅作为客观数据指标的可视化呈现，绝对不代表任何未来股价预测或投资建议。")
                 import pandas as pd
@@ -1388,7 +1282,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), margin=dict(l=40, r=40, t=20, b=20), height=400)
                 st.plotly_chart(fig_radar, use_container_width=True)
 
-            with tab_insiders:
+            with tab3:
                 st.markdown("---")
                 st.markdown(f"### 🔎 【{s_title_name}】 机构调研与资金追踪 <span style='font-size:0.75rem; opacity:0.6;'>A股强制披露公开信息聚合</span>", unsafe_allow_html=True)
                 if all_data.get('is_a_share'):
@@ -1405,7 +1299,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     st.info("ℹ️ 机构调研及增减持记录为 A 股监管强制披露类别，港股/美股无完全对应开源接口，此项不适用于当前标的。")
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
-            with tab_overview:
+            with tab1:
                 st.markdown("---")
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">📌 【{s_title_name}】 客观数据总览</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源（yfinance/akshare）的客观历史记录，不构成、也不包含本站任何投资建议、评级、目标价推荐或仓位建议。")
@@ -1538,7 +1432,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
                     st.markdown(f"### 第三方分析师预测数据（历史观点）\n- **EPS (TTM)**：{eps_ttm_disp} | **EPS (前瞻预期)**：{eps_fwd_disp}\n- **营收增速 (最新)**：{rev_growth_disp}")
 
-            with tab_news:
+            with tab4:
                 st.markdown("---")
                 st.markdown("## 📰 近期新闻事件性质客观分类 <span style='font-size:0.72rem; opacity:0.6;'>基于新闻标题关键词的客观事件性质分类，非对股价走势的预测</span>", unsafe_allow_html=True)
                 n_col1, n_col2 = st.columns(2)
