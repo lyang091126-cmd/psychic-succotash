@@ -345,6 +345,48 @@ st.markdown("""
     .event-analysis-title { font-weight: 600; font-size: 0.85rem; color: #00F2FE; margin-bottom: 0.2rem; }
     .event-analysis-text { font-size: 0.85rem; opacity: 0.88; line-height: 1.5; color: #94A3B8; }
 
+    /* 修复：spacer 类此前从未定义，导致所有 <div class="spacer-*"> 实际不产生任何间距 */
+    .spacer-sm { height: 0.6rem; }
+    .spacer-md { height: 1.2rem; }
+    .spacer-lg { height: 2rem; }
+
+    /* 产业链图谱：宽屏横向 Grid + 居中箭头，窄屏自动切换为纵向堆叠，箭头随之旋转90° */
+    .chain-grid {
+        display: grid;
+        grid-template-columns: 1fr auto 1.2fr auto 1fr;
+        align-items: stretch;
+        gap: 6px;
+    }
+    .chain-arrow {
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.8rem; color: #475569; opacity: 0.6;
+    }
+    @media (max-width: 900px) {
+        .chain-grid { grid-template-columns: 1fr; }
+        .chain-arrow { transform: rotate(90deg); padding: 6px 0; }
+    }
+
+    /* Tab 内容区呼吸感统一 */
+    div[data-baseweb="tab-panel"] { padding-top: 1.2rem; }
+
+    /* 估值分位数进度条 */
+    .percentile-track {
+        position: relative; width: 100%; height: 10px; border-radius: 6px;
+        background: linear-gradient(90deg, #00b865 0%, #fbbf24 50%, #ef4444 100%);
+        margin: 10px 0 4px 0; opacity: 0.85;
+    }
+    .percentile-marker {
+        position: absolute; top: -5px; width: 3px; height: 20px;
+        background: #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.8);
+        transform: translateX(-50%);
+    }
+    .kpi-neon-card {
+        background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px; padding: 1rem; text-align: center; height: 100%;
+    }
+    .kpi-neon-label { font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.4rem; }
+    .kpi-neon-value { font-size: 1.6rem; font-weight: 900; color: #00F2FE; text-shadow: 0 0 12px rgba(0,242,254,0.35); }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -701,6 +743,20 @@ def fetch_all_data(ticker_input):
 
     return data
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_price_history_long(ticker_input, years=3):
+    """抓取近N年收盘价，仅用于计算「股价历史分位」这一客观统计指标（不是PE分位，不做估值判断）。
+    说明：真正的“PE历史分位”需要历史EPS序列，免费数据源无法可靠获取，
+    为避免编造精度，本函数只提供可验证的“股价所处历史区间分位”作为透明替代指标。"""
+    try:
+        t = yf.Ticker(ticker_input)
+        h = t.history(period=f"{years}y")
+        if h is None or h.empty:
+            return None
+        return h[['Close']].dropna()
+    except Exception:
+        return None
+
 def build_kline_chart(df, ticker_input):
     """构建带 MA/MACD 的交互式 K 线图"""
     df = df.copy()
@@ -1043,33 +1099,31 @@ def build_chain_html(info, ticker):
     <div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
       <div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#38bdf8; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
       {warn_html}
-      <div style="display:flex; flex-direction:row; justify-content:space-between; align-items:stretch; gap:15px; flex-wrap:wrap;">
-        
+      <div class="chain-grid">
+
         <!-- 上游 (Upstream) -->
-        <div style="flex:1; min-width:200px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
           <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🏭</span> <span>上游 (Upstream)</span></div>
           <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{up_li}</ul>
         </div>
-        
-        <!-- 箭头 -->
-        <div style="display:flex; align-items:center; justify-content:center; font-size:1.8rem; color:#475569; opacity:0.6; padding:0 10px;">➔</div>
-        
+
+        <div class="chain-arrow">➔</div>
+
         <!-- 中游 (Midstream) -->
-        <div style="flex:1.2; min-width:240px; background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
+        <div style="background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
           <div style="font-size:0.95rem; font-weight:700; color:#38bdf8; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
           <div style="font-size:1.4rem; font-weight:900; color:#ffffff; text-align:center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">{name}</div>
           <div style="font-size:0.88rem; opacity:0.9; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:6px;">{chain['mid_role']}</div>
         </div>
-        
-        <!-- 箭头 -->
-        <div style="display:flex; align-items:center; justify-content:center; font-size:1.8rem; color:#475569; opacity:0.6; padding:0 10px;">➔</div>
-        
+
+        <div class="chain-arrow">➔</div>
+
         <!-- 下游 (Downstream) -->
-        <div style="flex:1; min-width:200px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
           <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🛒</span> <span>下游 (Downstream)</span></div>
           <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{down_li}</ul>
         </div>
-        
+
       </div>
       <div style="text-align:center; font-size:0.82rem; margin-top:1.8rem; color:#94a3b8; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
         📌 {chain['down_note']}
@@ -1311,21 +1365,36 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
         price = info.get('currentPrice', info.get('regularMarketPrice', 0))
         prev_close = info.get('previousClose', price)
         chg_pct = round((price - prev_close) / prev_close * 100, 2) if prev_close else 0
-        pe_ttm = round(info.get('trailingPE', 0), 2)
-        fwd_pe = round(info.get('forwardPE', 0), 2)
-        inst_pct = round(info.get('heldPercentInstitutions', 0) * 100, 2)
-        risk_level = "极高" if chg_pct < -5 else "中性" if -5 <= chg_pct <= 5 else "稳健"
-        
+        pe_ttm = info.get('trailingPE')
+        fwd_pe = info.get('forwardPE')
+        inst_pct = info.get('heldPercentInstitutions')
+
+        # 客观「52周价格区间位置」：纯统计事实（(现价-52周低)/(52周高-52周低)），
+        # 不是风险评级、不是买卖信号，只是价格所处历史区间的位置描述
+        wk_high = info.get('fiftyTwoWeekHigh')
+        wk_low = info.get('fiftyTwoWeekLow')
+        range_pos_str = "N/A"
+        if isinstance(wk_high, (int, float)) and isinstance(wk_low, (int, float)) and wk_high > wk_low and isinstance(price, (int, float)):
+            range_pos = (price - wk_low) / (wk_high - wk_low) * 100
+            range_pos = max(0, min(100, range_pos))
+            range_pos_str = f"{range_pos:.0f}%"
+
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("最新股价/涨跌", f"{price}", f"{chg_pct}%", delta_color="normal" if chg_pct >= 0 else "inverse")
-        m2.metric("Trailing PE / Forward PE", f"{pe_ttm}", f"{fwd_pe} Fwd", delta_color="off")
-        m3.metric("机构持仓比例", f"{inst_pct}%", delta_color="off")
-        m4.metric("AI 综合风险等级", risk_level, delta_color="off")
-    except Exception as e:
+        m2.metric("Trailing PE / Forward PE",
+                   f"{pe_ttm:.2f}" if isinstance(pe_ttm, (int, float)) else "N/A",
+                   f"{fwd_pe:.2f} Fwd" if isinstance(fwd_pe, (int, float)) else None,
+                   delta_color="off")
+        m3.metric("机构持仓比例",
+                   f"{inst_pct*100:.2f}%" if isinstance(inst_pct, (int, float)) else "N/A",
+                   delta_color="off")
+        m4.metric("52周区间位置", range_pos_str,
+                   help="当前价格在52周最高/最低价之间的相对位置，纯统计事实，不代表风险等级、买卖信号或任何投资建议")
+    except Exception:
         pass
-    
+
     st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-    
+
     st.markdown("### 📊 Executive Summary")
     exec_c1, exec_c2 = st.columns([2, 3])
 
@@ -1345,15 +1414,11 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             else:
                 target_range_str = f"{fmt_price_val(low_p, currency)} ~ {fmt_price_val(high_p, currency)}"
 
-            # ===== 客观数据总览（已删除：三票制表决、评分表、独立性判定卡、法证排查表、
-            # 看多逻辑vs伪证条件表、"强烈买入"Banner、机构目标价推荐Banner、仓位建议） =====
-
-            
-            # ===== 差异化功能2：五维雷达图评分计算 =====
+            # ===== 差异化功能2：五维雷达图评分计算（仅计算一次，全站只渲染一次，避免重复图表） =====
             radar_scores = {'估值 (Valuation)': 50, '成长 (Growth)': 50, '动能 (Momentum)': 50, '盈利 (Profitability)': 50, '健康 (Health)': 50}
             try:
                 pe = info.get('trailingPE', 0)
-                if pe > 0: radar_scores['估值 (Valuation)'] = max(10, min(100, 100 - (pe - 10) * 1.5))
+                if pe and pe > 0: radar_scores['估值 (Valuation)'] = max(10, min(100, 100 - (pe - 10) * 1.5))
                 rev_g = info.get('revenueGrowth', 0)
                 if rev_g: radar_scores['成长 (Growth)'] = max(10, min(100, 50 + rev_g * 100))
                 recent_close = all_data['hist_1y']['Close'].iloc[-1] if not all_data['hist_1y'].empty else 0
@@ -1367,7 +1432,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 pass
 
             with exec_c1:
-                import pandas as pd
                 df_radar = pd.DataFrame(dict(r=list(radar_scores.values()), theta=list(radar_scores.keys())))
                 fig_radar = px.line_polar(df_radar, r='r', theta='theta', line_close=True, template="plotly_dark")
                 fig_radar.update_traces(fill='toself', line_color='#00F2FE', fillcolor='rgba(0, 242, 254, 0.15)')
@@ -1376,132 +1440,86 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         radialaxis=dict(visible=False, range=[0, 100]),
                         angularaxis=dict(color='#F0F4F8', gridcolor='rgba(255,255,255,0.1)'),
                         bgcolor='rgba(0,0,0,0)'
-                    ), 
-                    margin=dict(l=40, r=40, t=20, b=20), 
-                    height=300,
+                    ),
+                    margin=dict(l=50, r=50, t=40, b=40),
+                    height=420,
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig_radar, use_container_width=True, config={'displayModeBar': False})
+                st.caption("📌 五维评分基于真实财务数据的固定映射公式归一化到0-100，客观指标可视化，不代表投资建议。")
 
             with exec_c2:
                 st.markdown('<div class="bg-card-glass" style="padding:15px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
                 st.markdown("#### 🧠 AI 反共识摘要总结")
                 st.markdown('<span class="badge-neutral">此摘要由 AI 生成，仅为对真实数据的客观陈述整理</span>', unsafe_allow_html=True)
-                
+
                 try:
                     st.markdown(ai_reply if 'ai_reply' in locals() else "等待 AI 报告生成...", unsafe_allow_html=True)
-                except:
+                except Exception:
                     st.markdown("等待 AI 报告生成...")
-                    
+
                 st.markdown('</div>', unsafe_allow_html=True)
-                
+
             st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
             tab1, tab2, tab3, tab4 = st.tabs(["🎯 反共识诊断", "📊 财报与估值穿透", "🏛️ 机构与资金追踪", "📰 AI 中性舆情解构"])
 
-
-            with tab2:
-                st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">🕸️ 【{s_title_name}】 客观五维雷达图</div>', unsafe_allow_html=True)
-                st.caption("📌 本雷达图基于 yfinance 提取的绝对财务指标，并使用固定映射逻辑归一化到 0-100 分位。此图仅作为客观数据指标的可视化呈现，绝对不代表任何未来股价预测或投资建议。")
-                import pandas as pd
-                df_radar = pd.DataFrame(dict(r=list(radar_scores.values()), theta=list(radar_scores.keys())))
-                fig_radar = px.line_polar(df_radar, r='r', theta='theta', line_close=True, template="plotly_dark")
-                fig_radar.update_traces(fill='toself', line_color='#00b865', fillcolor='rgba(0,184,101,0.2)')
-                fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), margin=dict(l=40, r=40, t=20, b=20), height=400)
-                st.plotly_chart(fig_radar, use_container_width=True)
-
-            with tab3:
-                st.markdown("---")
-                st.markdown(f"### 🔎 【{s_title_name}】 机构调研与资金追踪 <span style='font-size:0.75rem; opacity:0.6;'>A股强制披露公开信息聚合</span>", unsafe_allow_html=True)
-                if all_data.get('is_a_share'):
-                    jgdy_hist = None
-                    try:
-                        import akshare as ak
-                        # 注意：此处使用简化兜底逻辑避免 akshare date 参数异常导致全页面崩溃
-                        # 我们将此处留空或提示，因为接口不支持 symbol 搜索最近记录
-                        pass
-                    except Exception:
-                        pass
-                    st.info("⚠️ 东方财富数据接口 (akshare) 当前在本服务器环境遭遇网络错误 (DNS) 或参数变更限制，无法自动拉取该标的近90日专属机构调研记录。本站严格遵守客观陈述底线，绝不在此编造测试数据占位。")
-                else:
-                    st.info("ℹ️ 机构调研及增减持记录为 A 股监管强制披露类别，港股/美股无完全对应开源接口，此项不适用于当前标的。")
-                st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-
+            # =====================================================================
+            # Tab 1：反共识诊断 —— 分析师评级分布、产业链图谱、主营业务构成、缠论技术摘要
+            # =====================================================================
             with tab1:
                 st.markdown("---")
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">📌 【{s_title_name}】 客观数据总览</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源（yfinance/akshare）的客观历史记录，不构成、也不包含本站任何投资建议、评级、目标价推荐或仓位建议。")
 
-                has_inst = bool(st_prof['inst_names'] and st_prof['inst_shares'])
-                if has_inst:
-                    c1_a, c1_b = st.columns([1.05, 0.95])
-                else:
-                    _, c1_a, _ = st.columns([0.15, 0.7, 0.15])
-                    c1_b = None
+                st.markdown("### 📊 第三方分析师评级分布 (历史事实)")
+                recs_df_top = all_data.get('recommendations')
 
-                with c1_a:
-                    st.markdown("### 📊 第三方分析师评级分布 (历史事实)")
-                    recs_df_top = all_data.get('recommendations')
-                    
-                    rat_col_text, rat_col_chart = st.columns([1, 1.2])
-                    with rat_col_text:
-                        st.markdown(f"""
-                        **第三方目标价历史区间**
-                        - 最高: {fmt_price_val(high_p, currency) if 'high_p' in locals() and high_p else 'N/A'}
-                        - 均值: {fmt_price_val(mean_p, currency) if 'mean_p' in locals() and mean_p else 'N/A'}
-                        - 最低: {fmt_price_val(low_p, currency) if 'low_p' in locals() and low_p else 'N/A'}
-                        
-                        <div style="font-size:0.75rem; opacity:0.6; margin-top:1rem;">数据来源：yfinance<br>不构成投资建议</div>
-                        """, unsafe_allow_html=True)
-                        
-                    with rat_col_chart:
-                        if recs_df_top is not None and not recs_df_top.empty:
-                            try:
-                                latest_r = recs_df_top.iloc[0]
-                                vals = [
-                                    int(latest_r.get('strongBuy',0) or 0), 
-                                    int(latest_r.get('buy',0) or 0), 
-                                    int(latest_r.get('hold',0) or 0), 
-                                    int(latest_r.get('sell',0) or 0), 
-                                    int(latest_r.get('strongSell',0) or 0)
-                                ]
-                                labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
-                                colors = ['#ef4444', '#f87171', '#fbbf24', '#34d399', '#00b865']
-                                df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
-                                df_pie = df_pie[df_pie['Value'] > 0]
-                                
-                                if not df_pie.empty:
-                                    fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.6,
-                                                      color='Label', color_discrete_map=dict(zip(labels, colors)))
-                                    fig_donut.update_layout(
-                                        height=220, margin=dict(l=0, r=0, t=10, b=10),
-                                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                        showlegend=False,
-                                        annotations=[dict(text='综合评级', x=0.5, y=0.5, font_size=14, showarrow=False)]
-                                    )
-                                    fig_donut.update_traces(textinfo='label+percent', textfont_size=11, hoverinfo='label+value')
-                                    st.plotly_chart(fig_donut, use_container_width=True)
-                                else:
-                                    st.info("暂无有效评级人数")
-                            except Exception:
-                                st.info("评级数据解析异常")
-                        else:
-                            st.info("暂无评级数据")
+                rat_col_text, rat_col_chart = st.columns([1, 1.2])
+                with rat_col_text:
+                    st.markdown(f"""
+                    **第三方目标价历史区间**
+                    - 最高: {fmt_price_val(high_p, currency) if high_p else 'N/A'}
+                    - 均值: {fmt_price_val(mean_p, currency) if mean_p else 'N/A'}
+                    - 最低: {fmt_price_val(low_p, currency) if low_p else 'N/A'}
 
-                if c1_b is not None:
-                    with c1_b:
-                        fig_inst = go.Figure(go.Bar(
-                            x=st_prof['inst_shares'], y=st_prof['inst_names'], orientation='h',
-                            marker_color=['#00b865', '#38bdf8', '#fbbf24', '#a855f7', '#94a3b8'],
-                            text=[f"{v}%" for v in st_prof['inst_shares']], textposition='auto'
-                        ))
-                        fig_inst.update_layout(
-                            height=240, template='plotly_dark', margin=dict(l=10, r=10, t=35, b=10),
-                            title_text=f"🏛️ {s_title_name} 十大流通股东持仓比例 (%)", yaxis=dict(autorange="reversed"),
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
-                        )
-                        st.plotly_chart(fig_inst, use_container_width=True)
+                    <div style="font-size:0.75rem; opacity:0.6; margin-top:1rem;">数据来源：yfinance<br>不构成投资建议</div>
+                    """, unsafe_allow_html=True)
+
+                with rat_col_chart:
+                    if recs_df_top is not None and not recs_df_top.empty:
+                        try:
+                            latest_r = recs_df_top.iloc[0]
+                            vals = [
+                                int(latest_r.get('strongBuy', 0) or 0),
+                                int(latest_r.get('buy', 0) or 0),
+                                int(latest_r.get('hold', 0) or 0),
+                                int(latest_r.get('sell', 0) or 0),
+                                int(latest_r.get('strongSell', 0) or 0)
+                            ]
+                            labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
+                            colors = ['#ef4444', '#f87171', '#fbbf24', '#34d399', '#00b865']
+                            df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
+                            df_pie = df_pie[df_pie['Value'] > 0]
+
+                            if not df_pie.empty:
+                                fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.6,
+                                                  color='Label', color_discrete_map=dict(zip(labels, colors)))
+                                fig_donut.update_layout(
+                                    height=220, margin=dict(l=0, r=0, t=10, b=10),
+                                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                    showlegend=False,
+                                    annotations=[dict(text='第三方评级分布', x=0.5, y=0.5, font_size=12, showarrow=False)]
+                                )
+                                fig_donut.update_traces(textinfo='label+percent', textfont_size=11, hoverinfo='label+value')
+                                st.plotly_chart(fig_donut, use_container_width=True)
+                            else:
+                                st.info("暂无有效评级人数")
+                        except Exception:
+                            st.info("评级数据解析异常")
+                    else:
+                        st.info("暂无评级数据")
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
@@ -1524,7 +1542,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                                 st.plotly_chart(fig_p1, use_container_width=True)
                             else:
                                 st.info("暂无按产品分类数据")
-                                
+
                         with c_pie2:
                             df_reg = main_comp[main_comp['分类类型'].str.contains('地区', na=False)] if '分类类型' in main_comp.columns else pd.DataFrame()
                             if not df_reg.empty and '主营构成' in df_reg.columns and '收入比例' in df_reg.columns:
@@ -1535,7 +1553,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                                 st.plotly_chart(fig_p2, use_container_width=True)
                             else:
                                 st.info("暂无按地区分类数据")
-                                
+
                         with st.expander("查看原始数据明细"):
                             comp_cols = [c for c in main_comp.columns if c in ['报告期', '分类类型', '主营构成', '主营收入', '收入比例', '主营利润', '利润比例', '主营成本', '成本比例']]
                             st.dataframe(main_comp[comp_cols] if comp_cols else main_comp, use_container_width=True)
@@ -1559,83 +1577,154 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         kline_fig.update_layout(height=480)
                         st.plotly_chart(kline_fig, use_container_width=True)
 
+            # =====================================================================
+            # Tab 2：财报与估值穿透 —— 估值分位数进度条 + 2x2 KPI + 财务核心数据表
+            # （此前这些内容被误挂在 tab1 下，导致切到 tab2 时页面只剩一张雷达图，其余"消失"）
+            # =====================================================================
+            with tab2:
+                st.markdown("---")
+                st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:0.6rem;">📊 【{s_title_name}】 财报与估值穿透</div>', unsafe_allow_html=True)
+                st.caption("⚠️ 以下均为第三方数据源的客观历史记录与统计计算，不构成估值结论或投资建议。")
+
+                st.markdown("#### 📐 股价历史区间分位（近3年，客观统计）")
+                hist_long = fetch_price_history_long(ticker_input, years=3)
+                if hist_long is not None and len(hist_long) >= 30:
+                    closes = hist_long['Close']
+                    cur_c = closes.iloc[-1]
+                    pct_rank = float((closes < cur_c).mean() * 100)
+                    st.markdown(f"""
+                    <div class="percentile-track"><div class="percentile-marker" style="left:{pct_rank:.1f}%;"></div></div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94A3B8;">
+                        <span>近3年最低</span><span>近3年最高</span>
+                    </div>
+                    <div style="text-align:center; margin-top:0.6rem; font-size:0.95rem;">
+                        当前价格处于近3年股价区间的第 <b style="color:#00F2FE; font-size:1.1rem;">{pct_rank:.0f}</b> 百分位
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.caption("⚠️ 这是「股价」在其自身近3年历史区间中的相对位置，不是「PE估值」的历史分位。严谨的PE历史分位需要完整历史EPS序列，免费数据源无法可靠获取，为避免用假精度误导用户，本站不提供编造的PE分位数字。")
+                else:
+                    st.info("暂无足够的近3年历史价格数据，无法计算区间分位。")
+
+                st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+                st.markdown("#### 🧮 核心财务 KPI")
+
+                def kpi_card(label, value):
+                    return f'<div class="kpi-neon-card"><div class="kpi-neon-label">{label}</div><div class="kpi-neon-value">{value}</div></div>'
+
+                eps_ttm = info.get('trailingEps')
+                rev_growth_val = info.get('revenueGrowth')
+                net_margin_kpi = info.get('profitMargins') or info.get('netMargins')
+                roe_kpi = info.get('returnOnEquity')
+
+                k1, k2 = st.columns(2)
+                with k1:
+                    st.markdown(kpi_card("EPS (TTM)", f"{eps_ttm:.2f}" if isinstance(eps_ttm, (int, float)) else "N/A"), unsafe_allow_html=True)
+                with k2:
+                    st.markdown(kpi_card("营收增速", f"{rev_growth_val*100:.2f}%" if isinstance(rev_growth_val, (int, float)) else "N/A"), unsafe_allow_html=True)
+                st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+                k3, k4 = st.columns(2)
+                with k3:
+                    st.markdown(kpi_card("净利率 (TTM)", f"{net_margin_kpi*100:.2f}%" if isinstance(net_margin_kpi, (int, float)) else "N/A"), unsafe_allow_html=True)
+                with k4:
+                    st.markdown(kpi_card("ROE", f"{roe_kpi*100:.2f}%" if isinstance(roe_kpi, (int, float)) else "N/A"), unsafe_allow_html=True)
+
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
-                c5_a, c5_b = st.columns([1.5, 1.0])
-                with c5_a:
-                    def fnum(v, pct=False, money=False):
-                        if v is None or (isinstance(v, float) and __import__('numpy').isnan(v)): return "N/A"
-                        try:
-                            if pct: return f"{float(v)*100:.2f}%"
-                            if money:
-                                v = float(v)
-                                return f"{v/1e8:.2f}亿" if abs(v) >= 1e8 else f"{v:,.0f}"
-                            return str(v)
-                        except: return "N/A"
 
-                    qf = all_data.get('quarterly_financials')
-                    rev_now = rev_prev = np_now = np_prev = None
-                    report_quarter = "N/A"
-                    if qf is not None and not qf.empty:
-                        try:
-                            cols = list(qf.columns)
-                            report_quarter = str(cols[0].date()) if hasattr(cols[0], 'date') else str(cols[0])
-                            if 'Total Revenue' in qf.index:
-                                rev_now = qf.loc['Total Revenue'].iloc[0]
-                                if len(cols) > 1: rev_prev = qf.loc['Total Revenue'].iloc[1]
-                            for key in ['Net Income', 'Net Income Common Stockholders']:
-                                if key in qf.index:
-                                    np_now = qf.loc[key].iloc[0]
-                                    if len(cols) > 1: np_prev = qf.loc[key].iloc[1]
-                                    break
-                        except Exception: pass
+                def fnum(v, pct=False, money=False):
+                    if v is None or (isinstance(v, float) and np.isnan(v)):
+                        return "N/A"
+                    try:
+                        if pct:
+                            return f"{float(v)*100:.2f}%"
+                        if money:
+                            v = float(v)
+                            return f"{v/1e8:.2f}亿" if abs(v) >= 1e8 else f"{v:,.0f}"
+                        return str(v)
+                    except Exception:
+                        return "N/A"
 
-                    gross_margin = info.get('grossMargins')
-                    net_margin = info.get('profitMargins') or info.get('netMargins')
-                    roe = info.get('returnOnEquity')
-                    debt_ratio = info.get('debtToEquity')
-                    fcf = info.get('freeCashflow')
-                    ocf = info.get('operatingCashflow')
+                qf = all_data.get('quarterly_financials')
+                rev_now = rev_prev = np_now = np_prev = None
+                report_quarter = "N/A"
+                if qf is not None and not qf.empty:
+                    try:
+                        cols = list(qf.columns)
+                        report_quarter = str(cols[0].date()) if hasattr(cols[0], 'date') else str(cols[0])
+                        if 'Total Revenue' in qf.index:
+                            rev_now = qf.loc['Total Revenue'].iloc[0]
+                            if len(cols) > 1: rev_prev = qf.loc['Total Revenue'].iloc[1]
+                        for key in ['Net Income', 'Net Income Common Stockholders']:
+                            if key in qf.index:
+                                np_now = qf.loc[key].iloc[0]
+                                if len(cols) > 1: np_prev = qf.loc[key].iloc[1]
+                                break
+                    except Exception:
+                        pass
 
-                    rev_trend = "N/A"
-                    if isinstance(rev_now, (int, float)) and isinstance(rev_prev, (int, float)) and rev_prev != 0:
-                        rev_trend = f"{(rev_now-rev_prev)/abs(rev_prev)*100:+.1f}% QoQ"
-                    np_trend = "N/A"
-                    if isinstance(np_now, (int, float)) and isinstance(np_prev, (int, float)) and np_prev != 0:
-                        np_trend = f"{(np_now-np_prev)/abs(np_prev)*100:+.1f}% QoQ"
+                gross_margin = info.get('grossMargins')
+                net_margin = info.get('profitMargins') or info.get('netMargins')
+                roe = info.get('returnOnEquity')
+                debt_ratio = info.get('debtToEquity')
+                fcf = info.get('freeCashflow')
 
-                    st.markdown(f"### 财务核心数据 <span style='font-size:0.75rem; opacity:0.6;'>数据来源: yfinance | 最新季度: {report_quarter}</span>", unsafe_allow_html=True)
-                    st.markdown(f"""
-                    | 财务指标 | 最新季度实际值 | 环比/同比趋势 |
-                    | :--- | :---: | :---: |
-                    | **营业收入 (Revenue)** | {fnum(rev_now, money=True)} | {rev_trend} |
-                    | **净利润 (Net Profit)** | {fnum(np_now, money=True)} | {np_trend} |
-                    | **毛利率 (Gross Margin)** | {fnum(gross_margin, pct=True)} | — |
-                    | **净利率 (Net Margin)** | {fnum(net_margin, pct=True)} | — |
-                    | **ROE (净资产收益率)** | {fnum(roe, pct=True)} | — |
-                    | **负债权益比** | {fnum(debt_ratio)} | — |
-                    | **自由现金流 (FCF)** | {fnum(fcf, money=True)} | — |
-                    """)
-                    st.caption("⚠️ 字段若显示 N/A 代表源未能获取真实数据，严禁编造。")
+                rev_trend = "N/A"
+                if isinstance(rev_now, (int, float)) and isinstance(rev_prev, (int, float)) and rev_prev != 0:
+                    rev_trend = f"{(rev_now-rev_prev)/abs(rev_prev)*100:+.1f}% QoQ"
+                np_trend = "N/A"
+                if isinstance(np_now, (int, float)) and isinstance(np_prev, (int, float)) and np_prev != 0:
+                    np_trend = f"{(np_now-np_prev)/abs(np_prev)*100:+.1f}% QoQ"
 
-                with c5_b:
-                    st.markdown(f"### 第三方前瞻与 KPI <span style='font-size:0.75rem; opacity:0.6;'>历史预期事实</span>", unsafe_allow_html=True)
-                    st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
-                    
-                    eps_ttm = info.get('trailingEps', 0)
-                    eps_fwd = info.get('forwardEps', 0)
-                    rev_growth_val = info.get('revenueGrowth', 0)
-                    
-                    m_c1, m_c2 = st.columns(2)
-                    m_c1.metric("EPS (TTM)", f"{eps_ttm:.2f}" if isinstance(eps_ttm, (int, float)) else "N/A", delta_color="off")
-                    m_c2.metric("前瞻 EPS", f"{eps_fwd:.2f}" if isinstance(eps_fwd, (int, float)) else "N/A", f"{((eps_fwd-eps_ttm)/abs(eps_ttm))*100:.1f}%" if isinstance(eps_fwd, (int, float)) and isinstance(eps_ttm, (int, float)) and eps_ttm else None, delta_color="normal")
-                    
-                    st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-                    
-                    m_c3, m_c4 = st.columns(2)
-                    m_c3.metric("近期营收增速", f"{rev_growth_val*100:.2f}%" if isinstance(rev_growth_val, (int, float)) else "N/A", delta_color="normal" if isinstance(rev_growth_val, (int, float)) and rev_growth_val >= 0 else "inverse")
-                    m_c4.metric("净利率 (TTM)", fnum(net_margin, pct=True), delta_color="off")
+                st.markdown(f"#### 财务核心数据 <span style='font-size:0.75rem; opacity:0.6;'>数据来源: yfinance | 最新季度: {report_quarter}</span>", unsafe_allow_html=True)
+                st.markdown(f"""
+                | 财务指标 | 最新季度实际值 | 环比/同比趋势 |
+                | :--- | :---: | :---: |
+                | **营业收入 (Revenue)** | {fnum(rev_now, money=True)} | {rev_trend} |
+                | **净利润 (Net Profit)** | {fnum(np_now, money=True)} | {np_trend} |
+                | **毛利率 (Gross Margin)** | {fnum(gross_margin, pct=True)} | — |
+                | **净利率 (Net Margin)** | {fnum(net_margin, pct=True)} | — |
+                | **ROE (净资产收益率)** | {fnum(roe, pct=True)} | — |
+                | **负债权益比** | {fnum(debt_ratio)} | — |
+                | **自由现金流 (FCF)** | {fnum(fcf, money=True)} | — |
+                """)
+                st.caption("⚠️ 字段若显示 N/A 代表源未能获取真实数据，严禁编造。")
 
+            # =====================================================================
+            # Tab 3：机构与资金追踪 —— 十大流通股东持仓（此前误挂在tab1）+ 机构调研记录
+            # =====================================================================
+            with tab3:
+                st.markdown("---")
+                st.markdown(f"### 🏛️ 【{s_title_name}】 机构持仓与资金追踪 <span style='font-size:0.75rem; opacity:0.6;'>公开披露信息聚合</span>", unsafe_allow_html=True)
+
+                has_inst = bool(st_prof['inst_names'] and st_prof['inst_shares'])
+                if has_inst:
+                    fig_inst = go.Figure(go.Bar(
+                        x=st_prof['inst_shares'], y=st_prof['inst_names'], orientation='h',
+                        marker_color=['#00b865', '#38bdf8', '#fbbf24', '#a855f7', '#94a3b8'],
+                        text=[f"{v}%" for v in st_prof['inst_shares']], textposition='auto'
+                    ))
+                    fig_inst.update_layout(
+                        height=260, template='plotly_dark', margin=dict(l=10, r=10, t=35, b=10),
+                        title_text=f"🏛️ {s_title_name} 十大流通股东持仓比例 (%)", yaxis=dict(autorange="reversed"),
+                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig_inst, use_container_width=True)
+                    st.caption("📌 数据来源：akshare（十大流通股东），真实抓取，非编造。")
+                else:
+                    st.info("⚠️ 暂无该标的真实十大流通股东数据，本站不使用编造图表。")
+
+                st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown("#### 🔎 机构调研记录")
+                if all_data.get('is_a_share'):
+                    st.info("⚠️ 东方财富数据接口 (akshare) 当前在本服务器环境遭遇网络错误 (DNS) 或参数变更限制，无法自动拉取该标的近90日专属机构调研记录。本站严格遵守客观陈述底线，绝不在此编造测试数据占位。")
+                else:
+                    st.info("ℹ️ 机构调研及增减持记录为 A 股监管强制披露类别，港股/美股无完全对应开源接口，此项不适用于当前标的。")
+                st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+
+            # =====================================================================
+            # Tab 4：AI 中性舆情解构 —— 新闻事件性质客观分类（不变）
+            # =====================================================================
             with tab4:
                 st.markdown("---")
                 st.markdown("## 📰 近期新闻事件性质客观分类 <span style='font-size:0.72rem; opacity:0.6;'>基于新闻标题关键词的客观事件性质分类，非对股价走势的预测</span>", unsafe_allow_html=True)
@@ -1645,11 +1734,10 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     positive_kw = ['增长', '突破', '上涨', '创新高', '超预期', '合作', '获批', '中标', 'beat', 'surge', 'rally', 'upgrade', 'growth']
                     found_positive = False
                     all_news_items = []
-                    
-                    # 取出新闻数据
+
                     yf_news = all_data.get('news', []) if all_data else []
                     ak_news = all_data.get('ak_news') if all_data else None
-                    
+
                     for n in yf_news[:8]:
                         all_news_items.append({'title': n.get('title', ''), 'source': n.get('publisher', '')})
                     if ak_news is not None and not ak_news.empty:
@@ -1674,6 +1762,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     if not found_negative:
                         st.markdown('<div class="news-neutral"><div class="news-title">暂未识别到明确负面性质事件</div></div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-            st.markdown("---")
-            st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
+    st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+    st.markdown("---")
+    st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
