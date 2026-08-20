@@ -252,6 +252,70 @@ st.markdown("""
         border: 1px dashed rgba(251,191,36,0.5);
         padding: 1px 8px; border-radius: 6px; margin-left: 6px;
     }
+
+    /* 全球市场卡片样式 */
+    .market-card {
+        background: rgba(22, 27, 38, 0.75) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        padding: 0.9rem 1rem !important;
+        text-align: center !important;
+        position: relative !important;
+        overflow: hidden !important;
+        margin-bottom: 0.5rem !important;
+    }
+    .market-card-hot {
+        border-color: rgba(0, 242, 254, 0.5) !important;
+        box-shadow: 0 0 12px rgba(0, 242, 254, 0.15) !important;
+    }
+    .market-flag { font-size: 1.4rem; margin-bottom: 0.2rem; }
+    .market-name { font-size: 0.8rem; font-weight: 600; opacity: 0.85; margin: 0.15rem 0; color: #94A3B8; }
+    .market-index { font-size: 1.15rem; font-weight: 700; color: #F0F4F8; }
+    .market-chg-up { color: #00E676; font-size: 0.82rem; font-weight: 600; }
+    .market-chg-down { color: #FF4B4B; font-size: 0.82rem; font-weight: 600; }
+    .market-sector { font-size: 0.72rem; opacity: 0.75; margin-top: 0.3rem; color: #64748B; }
+    .market-badge-hot {
+        position: absolute; top: 6px; right: 8px;
+        background: #00F2FE; color: #0A0D14; font-size: 0.6rem; font-weight: 700;
+        padding: 1px 6px; border-radius: 6px;
+    }
+
+    /* 📅 大事日历左右对照样式 */
+    .event-card-row {
+        background: rgba(22, 27, 38, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        transition: all 0.2s ease;
+    }
+    .event-left-box {
+        flex: 0 0 42%;
+        border-right: 1px dashed rgba(255, 255, 255, 0.15);
+        padding-right: 1rem;
+    }
+    .event-right-box {
+        flex: 1;
+        padding-left: 0.5rem;
+    }
+    .event-date-badge {
+        display: inline-block;
+        background: rgba(0, 242, 254, 0.15);
+        color: #00F2FE;
+        font-weight: 700;
+        font-size: 0.82rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+        margin-bottom: 0.3rem;
+    }
+    .event-title { font-weight: 700; font-size: 0.95rem; color: #F0F4F8; margin-bottom: 0.25rem; }
+    .event-expectation { font-size: 0.82rem; opacity: 0.85; color: #fbbf24; }
+    .event-analysis-title { font-weight: 600; font-size: 0.85rem; color: #00F2FE; margin-bottom: 0.2rem; }
+    .event-analysis-text { font-size: 0.85rem; opacity: 0.88; line-height: 1.5; color: #94A3B8; }
+
 </style>
 """, unsafe_allow_html=True)
 

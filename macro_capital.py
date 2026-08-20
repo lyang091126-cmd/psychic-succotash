@@ -104,55 +104,48 @@ def render_macro_capital_board():
             st.warning("暂无 ETF 数据")
             
         st.markdown("---")
-        st.markdown("### 🗺️ 全市场行业主力资金净流入热力图 (Treemap)")
-        st.caption("方块大小代表资金活跃度(净额绝对值)，绿色代表净流入，红色代表净流出。点击可下钻或悬停查看详情。")
+        st.markdown("### 🗺️ 全市场行业主力资金净流入排行榜")
+        st.caption("展示全市场核心行业主力资金流向。红色代表净流入，绿色代表净流出。点击或悬停查看详情。")
         
         df_sector = fetch_sector_fund_flow()
         if not df_sector.empty and '行业' in df_sector.columns:
-            # Prepare data for Treemap
-            df_sector['板块'] = 'A股全市场'
+            # Sort by Net Inflow
+            df_sector = df_sector.sort_values(by='净流入(亿元)', ascending=False)
             
-            # Create a custom colorscale where Negative is Red (#ef4444) and Positive is Green (#00b865)
-            # Center it at 0
-            max_val = df_sector['净流入(亿元)'].abs().max()
-            if max_val == 0: max_val = 1
-            
-            fig = px.treemap(
+            # Color mapping: Red (#ef4444) for Inflow (>0), Green (#00b865) for Outflow (<0)
+            df_sector['颜色'] = df_sector['净流入(亿元)'].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
+
+            fig = px.bar(
                 df_sector,
-                path=['板块', '行业'],
-                values='绝对净流入',
-                color='净流入(亿元)',
-                color_continuous_scale=[[0, '#ef4444'], [0.5, '#262730'], [1, '#00b865']],
-                color_continuous_midpoint=0,
+                x='行业',
+                y='净流入(亿元)',
+                color='颜色',
+                color_discrete_map='identity',
                 hover_data={
                     '净流入(亿元)': ':.2f',
                     '涨跌幅': ':.2f',
                     '领涨股': True,
-                    '绝对净流入': False,
-                    '板块': False
+                    '颜色': False
                 },
-                custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
+                custom_data=['涨跌幅', '领涨股']
             )
             
             fig.update_traces(
-                texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:.2f}%",
-                hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>"
+                hovertemplate="<b>%{x}</b><br>净流入: %{y:.2f}亿<br>行业涨跌: %{customdata[0]:.2f}%<br>领涨龙头: %{customdata[1]}<extra></extra>"
             )
             
             fig.update_layout(
-                margin=dict(t=10, l=10, r=10, b=10),
+                margin=dict(t=20, l=10, r=10, b=40),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                height=500,
-                coloraxis_colorbar=dict(
-                    title="净流入(亿)",
-                    thicknessmode="pixels", thickness=15,
-                    lenmode="pixels", len=300,
-                    yanchor="top", y=1,
-                    ticks="outside"
-                )
+                height=550,
+                showlegend=False,
+                xaxis_title="",
+                yaxis_title="净流入 (亿元)",
+                xaxis=dict(tickangle=-45, tickfont=dict(size=10, color='#94A3B8')),
+                yaxis=dict(gridcolor='rgba(255,255,255,0.1)')
             )
             
-            st.plotly_chart(fig, use_container_width=True, key="macro_treemap")
+            st.plotly_chart(fig, use_container_width=True, key="macro_barchart")
         else:
             st.info("当前时段暂无行业资金流向数据。")
