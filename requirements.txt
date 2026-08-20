@@ -1,7 +1,4 @@
-streamlit
-yfinance
-akshare
-plotly
+pywin32
 pandas
-openai
-requests
+openpyxl
+google-genai

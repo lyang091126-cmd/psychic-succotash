@@ -608,6 +608,15 @@ except Exception as e:
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
+# --- 4.45 宏观资金面监控室 ---
+try:
+    from macro_capital import render_macro_capital_board
+    render_macro_capital_board()
+except Exception as e:
+    st.error(f"宏观资金面监控室加载失败: {e}")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
 # --- 4.5 众包财务预测 (Crowdsourcing) ---
 try:
     from crowdsource_agent import get_crowdsource_ui
