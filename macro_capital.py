@@ -211,11 +211,14 @@ def render_macro_capital_board():
             )
             
             fig_tree.update_traces(
+                textfont=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
                 texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:.2f}%",
                 hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>"
             )
             
             fig_tree.update_layout(
+                font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
+                uniformtext=dict(minsize=10, mode='hide'),
                 height=700,
                 width=None,
                 margin=dict(l=40, r=40, t=60, b=40),
