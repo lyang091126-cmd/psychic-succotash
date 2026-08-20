@@ -1,4 +1,7 @@
-pywin32
+streamlit
 pandas
-openpyxl
-google-genai
+numpy
+yfinance
+plotly
+openai
+akshare
