@@ -148,7 +148,10 @@ def render_macro_capital_board():
                 custom_data = ['涨跌幅', '当前价', '成交额(亿元)', '主力净流入(亿元)']
 
             df_etf_sorted = df_etf.sort_values(by=metric_x, ascending=True) # Ascending for horizontal bar
-            df_etf_sorted['颜色'] = df_etf_sorted[metric_x].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
+            if '涨跌幅' in df_etf_sorted.columns:
+                df_etf_sorted['颜色'] = df_etf_sorted['涨跌幅'].apply(lambda x: '#ef4444' if pd.notnull(x) and x >= 0 else '#00b865')
+            else:
+                df_etf_sorted['颜色'] = df_etf_sorted[metric_x].apply(lambda x: '#ef4444' if x > 0 else '#00b865')
             
             fig_etf = px.bar(
                 df_etf_sorted,
@@ -179,7 +182,8 @@ def render_macro_capital_board():
                 showlegend=False,
                 xaxis_title=f"{title_suffix} (亿元)",
                 yaxis_title="",
-                xaxis=dict(gridcolor='rgba(255,255,255,0.1)')
+                xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+                bargap=0.2
             )
             st.plotly_chart(fig_etf, use_container_width=True, key="macro_etf_barchart")
             
@@ -211,9 +215,11 @@ def render_macro_capital_board():
             )
             
             fig_tree.update_traces(
-                textfont=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
+                textinfo='label+value+percent parent',
+                textfont=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif", size=16),
                 texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:.2f}%",
-                hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>"
+                hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
+                marker=dict(cornerradius=5, line=dict(color='#0A0D14', width=2))
             )
             
             fig_tree.update_layout(

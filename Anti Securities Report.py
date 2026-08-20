@@ -923,25 +923,49 @@ def analyze_kline_and_chanlun(df):
             d1, p1, t1 = all_points[i]
             d2, p2, t2 = all_points[i+1]
             if t1 == 'bottom' and t2 == 'top' and (p2 - p1) / p1 > 0.10:
-                segments.append(f"上涨波段: {d1} ({p1:.2f}) → {d2} ({p2:.2f}), 涨幅 {(p2-p1)/p1*100:.1f}%")
+                segments.append(f"🟢 上涨: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [+{(p2-p1)/p1*100:.1f}%]")
             elif t1 == 'top' and t2 == 'bottom' and (p1 - p2) / p1 > 0.10:
-                segments.append(f"下跌波段: {d1} ({p1:.2f}) → {d2} ({p2:.2f}), 跌幅 {(p1-p2)/p1*100:.1f}%")
-    segments_str = "\n        - ".join(segments) if segments else "近1年未出现超10%显著波段，为标准窄幅箱体震荡"
+                segments.append(f"🔴 下跌: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [{(p1-p2)/p1*-100:.1f}%]")
+    
+    segments = segments[-5:]
+    segments_html = "".join([f"<div style='background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:5px; margin-bottom:5px; font-size:0.85rem;'>{s}</div>" for s in segments]) if segments else "<div style='opacity:0.6'>近半年未见超10%波段</div>"
 
-    return f"""
-        【近1年K线量化与缠论指标（{dates[0]}至{dates[-1]}）】
-        - 最新收盘: {recent_close:.2f}, 1年涨跌幅: {pct_1y:+.2f}% ({trend_status})
-        - 1年最高: {df['High'].max():.2f} ({df['High'].idxmax().strftime('%Y-%m-%d')}), 最低: {df['Low'].min():.2f} ({df['Low'].idxmin().strftime('%Y-%m-%d')})
-        - 近60日缠论中枢(结构化3笔重叠法，无法构建时回退统计分位数近似): 上轨ZG={zg_display:.2f}, 下轨ZD={zd_display:.2f}
-        - 中枢构建说明: {zhongshu_note}
-        - 最近顶分型: {recent_top[0]} ({recent_top[1]:.2f}), 底分型: {recent_bottom[0]} ({recent_bottom[1]:.2f})
-        - MACD能量柱: DIF={macd.iloc[-1]:.3f}, DEA={signal.iloc[-1]:.3f}, 柱体={macd_recent:.3f} ({divergence})
-        - 均线支撑/压力位: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}
-        - {rsi_status}
-        - {boll_status}
-        - 近1年波段起止历史明细:
-        - {segments_str}
+    html = f"""
+    <div style="background:rgba(20,24,33,0.5); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
+        <h4 style="color:#38bdf8; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
+            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#94a3b8;">最新收盘 / 趋势</div>
+                <div style="font-size:1rem; font-weight:600; color:{'#ef4444' if pct_1y>=0 else '#00b865'};">{recent_close:.2f} ({pct_1y:+.2f}%)</div>
+                <div style="font-size:0.8rem;">{trend_status}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#94a3b8;">1年最高 / 最低</div>
+                <div style="font-size:1rem; font-weight:600;">{df['High'].max():.2f} / {df['Low'].min():.2f}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#94a3b8;">近60日中枢轨 (ZG/ZD)</div>
+                <div style="font-size:1rem; font-weight:600; color:#fbbf24;">{zg_display:.2f} / {zd_display:.2f}</div>
+                <div style="font-size:0.75rem; opacity:0.7; margin-top:3px;">{zhongshu_note}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#94a3b8;">MACD / 辅助判断</div>
+                <div style="font-size:1rem; font-weight:600;">{macd_recent:.3f}</div>
+                <div style="font-size:0.75rem; color:{'#ef4444' if '底背驰' in divergence else '#00b865' if '顶背驰' in divergence else '#94a3b8'}; margin-top:3px;">{divergence}</div>
+            </div>
+        </div>
+        
+        <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+            <span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 8px; border-radius:4px; font-size:0.8rem;">均线支撑: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}</span>
+            <span style="background:rgba(251,191,36,0.1); color:#fbbf24; padding:4px 8px; border-radius:4px; font-size:0.8rem;">{rsi_status}</span>
+        </div>
+        
+        <div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin-bottom:10px;">📉 波段起止明细 (最近5条)</div>
+        {segments_html}
+    </div>
     """
+    return html
 
 # 产业链知识库：按行业/板块映射上中下游代表企业与下游分析
 CHAIN_DB = {
@@ -996,7 +1020,7 @@ CHAIN_DB = {
 }
 
 def build_chain_html(info, ticker):
-    """构建产业链定位图（含具体代表公司与下游市场分析）；未命中数据库时明确标注为通用行业描述，非本股票专属事实"""
+    """构建产业链定位图（基于 HTML Flexbox 与高级样式）"""
     sector = info.get('sector', '未知板块')
     industry = info.get('industry', '未知细分行业')
     name = info.get('shortName', ticker)
@@ -1010,36 +1034,49 @@ def build_chain_html(info, ticker):
     if chain is None:
         is_generic = True
         chain = {
-            'up': [f'{sector}相关原材料/设备供应商（通用行业描述，非本公司专属核实数据）'],
+            'up': [f'{sector}相关原材料/设备供应商'],
             'mid_role': f'{name} ({industry})',
-            'down': ['终端客户（通用行业描述，非本公司专属核实数据）'],
-            'down_note': '⚠️ 本公司未命中内置产业链数据库，以上为所属行业的通用性描述，非针对该公司核实的专属事实，请结合公司公告核实。'
+            'down': ['终端客户'],
+            'down_note': '⚠️ 未命中内置产业链数据库，以上为通用行业属性，非本公司专属核实数据。'
         }
-    up_html = '<br>'.join([f'• {c}' for c in chain['up']])
-    down_html = '<br>'.join([f'• {c}' for c in chain['down']])
-    warn_html = '<div style="color:#fbbf24; font-size:0.78rem; margin-top:0.4rem;">⚠️ 未命中内置行业库，以下为通用性描述</div>' if is_generic else ''
+        
+    up_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['up']])
+    down_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['down']])
+    warn_html = '<div style="color:#fbbf24; font-size:0.85rem; text-align:center; margin-bottom:1.5rem; font-weight:500;">⚠️ 未命中内置行业库，以下为通用性推测描述</div>' if is_generic else ''
+    
     return f"""
-    <div style="margin:1.5rem 0; width:100%;">
-      <div style="text-align:center; opacity:0.9; font-size:1.05rem; font-weight:700; margin-bottom:1rem; color:#00b865;">🌐 {name} 产业链生态定位图谱</div>
+    <div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+      <div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#38bdf8; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
       {warn_html}
-      <div class="chain-box">
-        <div class="chain-node chain-upstream">
-          <div style="font-size:0.95rem; margin-bottom:0.4rem; color:#818cf8;">🏭 <b>上游</b></div>
-          <div style="font-size:0.85rem; line-height:1.6; opacity:0.95;">{up_html}</div>
+      <div style="display:flex; flex-direction:row; justify-content:space-between; align-items:stretch; gap:15px; flex-wrap:wrap;">
+        
+        <!-- 上游 (Upstream) -->
+        <div style="flex:1; min-width:200px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+          <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🏭</span> <span>上游 (Upstream)</span></div>
+          <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{up_li}</ul>
         </div>
-        <div class="chain-arrow">➔</div>
-        <div class="chain-node chain-midstream chain-highlight">
-          <div style="font-size:1.05rem; margin-bottom:0.4rem; color:#fbbf24;">⚙️ <b>中游</b></div>
-          <div style="font-size:1rem; font-weight:800; color:#ffffff;">{name}</div>
-          <div style="font-size:0.85rem; opacity:0.9; margin-top:0.3rem;">{chain['mid_role']}</div>
+        
+        <!-- 箭头 -->
+        <div style="display:flex; align-items:center; justify-content:center; font-size:1.8rem; color:#475569; opacity:0.6; padding:0 10px;">➔</div>
+        
+        <!-- 中游 (Midstream) -->
+        <div style="flex:1.2; min-width:240px; background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
+          <div style="font-size:0.95rem; font-weight:700; color:#38bdf8; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
+          <div style="font-size:1.4rem; font-weight:900; color:#ffffff; text-align:center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">{name}</div>
+          <div style="font-size:0.88rem; opacity:0.9; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:6px;">{chain['mid_role']}</div>
         </div>
-        <div class="chain-arrow">➔</div>
-        <div class="chain-node chain-downstream">
-          <div style="font-size:0.95rem; margin-bottom:0.4rem; color:#34d399;">🛒 <b>下游</b></div>
-          <div style="font-size:0.85rem; line-height:1.6; opacity:0.95;">{down_html}</div>
+        
+        <!-- 箭头 -->
+        <div style="display:flex; align-items:center; justify-content:center; font-size:1.8rem; color:#475569; opacity:0.6; padding:0 10px;">➔</div>
+        
+        <!-- 下游 (Downstream) -->
+        <div style="flex:1; min-width:200px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+          <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🛒</span> <span>下游 (Downstream)</span></div>
+          <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{down_li}</ul>
         </div>
+        
       </div>
-      <div style="text-align:center; opacity:0.85; font-size:0.88rem; margin-top:0.8rem; background:rgba(0,184,101,0.06); padding:0.7rem 1.2rem; border-radius:10px; border:1px dashed rgba(0,184,101,0.3);">
+      <div style="text-align:center; font-size:0.82rem; margin-top:1.8rem; color:#94a3b8; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
         📌 {chain['down_note']}
       </div>
     </div>
@@ -1403,15 +1440,53 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
                 c1_a, c1_b = st.columns([1.05, 0.95])
                 with c1_a:
+                    st.markdown("### 📊 第三方分析师评级分布 (历史事实)")
                     recs_df_top = all_data.get('recommendations')
-                    rec_dist_str = "暂无数据（数据源未返回）"
-                    if recs_df_top is not None and not recs_df_top.empty:
-                        try:
-                            latest_r = recs_df_top.iloc[0]
-                            rec_dist_str = f"强烈买入 {int(latest_r.get('strongBuy',0) or 0)} / 买入 {int(latest_r.get('buy',0) or 0)} / 持有 {int(latest_r.get('hold',0) or 0)} / 卖出 {int(latest_r.get('sell',0) or 0)} / 强烈卖出 {int(latest_r.get('strongSell',0) or 0)}（来源: yfinance recommendations）"
-                        except Exception:
-                            pass
-                    st.markdown(f"### 第三方分析师评级人数分布（历史事实统计）\n- {rec_dist_str}\n- **第三方目标价历史区间**：{target_range_str}\n- 数据来源：yfinance analyst_price_targets / recommendations，不代表本站判断，也不构成投资建议。")
+                    
+                    rat_col_text, rat_col_chart = st.columns([1, 1.2])
+                    with rat_col_text:
+                        st.markdown(f"""
+                        **第三方目标价历史区间**
+                        - 最高: {fmt_price_val(high_p, currency) if 'high_p' in locals() and high_p else 'N/A'}
+                        - 均值: {fmt_price_val(mean_p, currency) if 'mean_p' in locals() and mean_p else 'N/A'}
+                        - 最低: {fmt_price_val(low_p, currency) if 'low_p' in locals() and low_p else 'N/A'}
+                        
+                        <div style="font-size:0.75rem; opacity:0.6; margin-top:1rem;">数据来源：yfinance<br>不构成投资建议</div>
+                        """, unsafe_allow_html=True)
+                        
+                    with rat_col_chart:
+                        if recs_df_top is not None and not recs_df_top.empty:
+                            try:
+                                latest_r = recs_df_top.iloc[0]
+                                vals = [
+                                    int(latest_r.get('strongBuy',0) or 0), 
+                                    int(latest_r.get('buy',0) or 0), 
+                                    int(latest_r.get('hold',0) or 0), 
+                                    int(latest_r.get('sell',0) or 0), 
+                                    int(latest_r.get('strongSell',0) or 0)
+                                ]
+                                labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
+                                colors = ['#00b865', '#34d399', '#fbbf24', '#f87171', '#ef4444']
+                                df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
+                                df_pie = df_pie[df_pie['Value'] > 0]
+                                
+                                if not df_pie.empty:
+                                    fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.6,
+                                                      color='Label', color_discrete_map=dict(zip(labels, colors)))
+                                    fig_donut.update_layout(
+                                        height=220, margin=dict(l=0, r=0, t=10, b=10),
+                                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                        showlegend=False,
+                                        annotations=[dict(text='综合评级', x=0.5, y=0.5, font_size=14, showarrow=False)]
+                                    )
+                                    fig_donut.update_traces(textinfo='label+percent', textfont_size=11, hoverinfo='label+value')
+                                    st.plotly_chart(fig_donut, use_container_width=True)
+                                else:
+                                    st.info("暂无有效评级人数")
+                            except Exception:
+                                st.info("评级数据解析异常")
+                        else:
+                            st.info("暂无评级数据")
 
                 with c1_b:
                     if st_prof['inst_names'] and st_prof['inst_shares']:
@@ -1422,7 +1497,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         ))
                         fig_inst.update_layout(
                             height=240, template='plotly_dark', margin=dict(l=10, r=10, t=35, b=10),
-                            title_text=f"🏛️ {s_title_name} 十大流通股东持仓比例 (%)", yaxis=dict(autorange="reversed")
+                            title_text=f"🏛️ {s_title_name} 十大流通股东持仓比例 (%)", yaxis=dict(autorange="reversed"),
+                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
                         )
                         st.plotly_chart(fig_inst, use_container_width=True)
                     else:
@@ -1438,9 +1514,33 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 main_comp = all_data.get('main_composition')
                 if main_comp is not None and not main_comp.empty:
                     try:
-                        comp_cols = [c for c in main_comp.columns if c in ['报告期', '分类类型', '主营构成', '主营收入', '收入比例', '主营利润', '利润比例', '主营成本', '成本比例']]
-                        st.dataframe(main_comp[comp_cols] if comp_cols else main_comp, use_container_width=True)
-                        st.caption("📌 数据来源：akshare stock_zygc_em（主营构成）。")
+                        c_pie1, c_pie2 = st.columns(2)
+                        with c_pie1:
+                            df_prod = main_comp[main_comp['分类类型'].str.contains('产品', na=False)] if '分类类型' in main_comp.columns else pd.DataFrame()
+                            if not df_prod.empty and '主营构成' in df_prod.columns and '收入比例' in df_prod.columns:
+                                df_prod['收入比例数值'] = df_prod['收入比例'].astype(str).str.replace('%', '', regex=False).astype(float)
+                                fig_p1 = px.pie(df_prod, values='收入比例数值', names='主营构成', hole=0.4, title="按产品分类营收占比", color_discrete_sequence=px.colors.sequential.Teal)
+                                fig_p1.update_traces(textinfo='label+percent', textposition='inside', showlegend=False)
+                                fig_p1.update_layout(margin=dict(t=40, b=10, l=10, r=10), height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                                st.plotly_chart(fig_p1, use_container_width=True)
+                            else:
+                                st.info("暂无按产品分类数据")
+                                
+                        with c_pie2:
+                            df_reg = main_comp[main_comp['分类类型'].str.contains('地区', na=False)] if '分类类型' in main_comp.columns else pd.DataFrame()
+                            if not df_reg.empty and '主营构成' in df_reg.columns and '收入比例' in df_reg.columns:
+                                df_reg['收入比例数值'] = df_reg['收入比例'].astype(str).str.replace('%', '', regex=False).astype(float)
+                                fig_p2 = px.pie(df_reg, values='收入比例数值', names='主营构成', hole=0.4, title="按地区分类营收占比", color_discrete_sequence=px.colors.sequential.Purp)
+                                fig_p2.update_traces(textinfo='label+percent', textposition='inside', showlegend=False)
+                                fig_p2.update_layout(margin=dict(t=40, b=10, l=10, r=10), height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                                st.plotly_chart(fig_p2, use_container_width=True)
+                            else:
+                                st.info("暂无按地区分类数据")
+                                
+                        with st.expander("查看原始数据明细"):
+                            comp_cols = [c for c in main_comp.columns if c in ['报告期', '分类类型', '主营构成', '主营收入', '收入比例', '主营利润', '利润比例', '主营成本', '成本比例']]
+                            st.dataframe(main_comp[comp_cols] if comp_cols else main_comp, use_container_width=True)
+                            st.caption("📌 数据来源：akshare stock_zygc_em（主营构成）。")
                     except Exception:
                         st.info("⚠️ 主营构成数据格式解析异常，暂不展示，避免误导。")
                 else:
@@ -1452,7 +1552,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 with c4_a:
                     st.markdown("### 📈 缠论技术面数据摘要 <span style='font-size:0.75rem; opacity:0.6;'>⚠️ 简化版分型/中枢识别+RSI+BOLL，非买卖点建议</span>", unsafe_allow_html=True)
                     chanlun_text_ui = analyze_kline_and_chanlun(all_data['hist_1y']) if all_data and all_data.get('hist_1y') is not None else "暂无K线数据"
-                    st.markdown(f"```\n{chanlun_text_ui}\n```")
+                    st.markdown(chanlun_text_ui, unsafe_allow_html=True)
                     st.caption("📌 以上数据均基于真实K线计算得出，非AI编造。")
                 with c4_b:
                     if not all_data['hist_1y'].empty:
@@ -1462,7 +1562,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
-                c5_a, c5_b = st.columns([1.0, 1.0])
+                c5_a, c5_b = st.columns([1.5, 1.0])
                 with c5_a:
                     def fnum(v, pct=False, money=False):
                         if v is None or (isinstance(v, float) and __import__('numpy').isnan(v)): return "N/A"
@@ -1520,14 +1620,22 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     st.caption("⚠️ 字段若显示 N/A 代表源未能获取真实数据，严禁编造。")
 
                 with c5_b:
-                    eps_ttm = info.get('trailingEps')
-                    eps_fwd = info.get('forwardEps')
-                    rev_growth_val = info.get('revenueGrowth')
-                    rev_growth_disp = f"{rev_growth_val*100:+.2f}%" if isinstance(rev_growth_val, (int, float)) else "N/A"
-                    eps_ttm_disp = f"{eps_ttm:.2f}" if isinstance(eps_ttm, (int, float)) else "N/A"
-                    eps_fwd_disp = f"{eps_fwd:.2f}" if isinstance(eps_fwd, (int, float)) else "N/A"
-
-                    st.markdown(f"### 第三方分析师预测数据（历史观点）\n- **EPS (TTM)**：{eps_ttm_disp} | **EPS (前瞻预期)**：{eps_fwd_disp}\n- **营收增速 (最新)**：{rev_growth_disp}")
+                    st.markdown(f"### 第三方前瞻与 KPI <span style='font-size:0.75rem; opacity:0.6;'>历史预期事实</span>", unsafe_allow_html=True)
+                    st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+                    
+                    eps_ttm = info.get('trailingEps', 0)
+                    eps_fwd = info.get('forwardEps', 0)
+                    rev_growth_val = info.get('revenueGrowth', 0)
+                    
+                    m_c1, m_c2 = st.columns(2)
+                    m_c1.metric("EPS (TTM)", f"{eps_ttm:.2f}" if isinstance(eps_ttm, (int, float)) else "N/A", delta_color="off")
+                    m_c2.metric("前瞻 EPS", f"{eps_fwd:.2f}" if isinstance(eps_fwd, (int, float)) else "N/A", f"{((eps_fwd-eps_ttm)/abs(eps_ttm))*100:.1f}%" if isinstance(eps_fwd, (int, float)) and isinstance(eps_ttm, (int, float)) and eps_ttm else None, delta_color="normal")
+                    
+                    st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+                    
+                    m_c3, m_c4 = st.columns(2)
+                    m_c3.metric("近期营收增速", f"{rev_growth_val*100:.2f}%" if isinstance(rev_growth_val, (int, float)) else "N/A", delta_color="normal" if isinstance(rev_growth_val, (int, float)) and rev_growth_val >= 0 else "inverse")
+                    m_c4.metric("净利率 (TTM)", fnum(net_margin, pct=True), delta_color="off")
 
             with tab4:
                 st.markdown("---")
