@@ -5,50 +5,64 @@ import numpy as np
 import plotly.express as px
 import akshare as ak
 from datetime import datetime
+import concurrent.futures
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_national_team_etfs():
     """Fetch real-time data for key broad-based ETFs commonly bought by the National Team"""
     etfs = {
-        '510300.SS': '华泰柏瑞沪深300',
-        '510050.SS': '华夏上证50',
-        '510500.SS': '南方中证500',
-        '159915.SZ': '易方达创业板',
-        '159845.SZ': '华夏中证1000',
-        '512890.SS': '华泰柏瑞红利'
+        '510300.SS': '华泰柏瑞沪深300', '510050.SS': '华夏上证50',
+        '510500.SS': '南方中证500', '159915.SZ': '易方达创业板',
+        '159845.SZ': '华夏中证1000', '512890.SS': '华泰红利',
+        '510310.SS': '易方达沪深300', '159919.SZ': '嘉实沪深300',
+        '510330.SS': '华夏沪深300', '588000.SS': '华夏科创50',
+        '588090.SS': '易方达科创50', '159949.SZ': '华夏创业板50',
+        '512100.SS': '南方中证1000', '159852.SZ': '广发中证1000',
+        '512000.SS': '华宝券商ETF', '512800.SS': '华宝银行ETF'
     }
     
-    results = []
-    for tk, name in etfs.items():
+    def get_etf(tk, name):
         try:
             t = yf.Ticker(tk)
             hist = t.history(period='2d')
             if len(hist) >= 1:
-                current_price = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
-                volume = hist['Volume'].iloc[-1]
+                current_price = float(hist['Close'].iloc[-1])
+                prev_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
+                volume = float(hist['Volume'].iloc[-1])
                 
                 chg_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0
                 turnover_100m = (current_price * volume) / 100000000 # 亿元
                 
-                results.append({
-                    '代码': tk,
-                    '名称': name,
-                    '当前价': current_price,
-                    '涨跌幅': chg_pct,
-                    '成交额(亿元)': turnover_100m
-                })
-        except Exception as e:
+                if turnover_100m > 0:
+                    return {
+                        '代码': tk,
+                        '名称': name,
+                        '当前价': current_price,
+                        '涨跌幅': chg_pct,
+                        '成交额(亿元)': turnover_100m
+                    }
+        except Exception:
             pass
+        return None
+
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(get_etf, tk, name): tk for tk, name in etfs.items()}
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res:
+                results.append(res)
             
-    return pd.DataFrame(results)
+    df = pd.DataFrame(results)
+    if not df.empty:
+        df = df.sort_values(by='成交额(亿元)', ascending=False)
+    return df
 
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_sector_fund_flow():
     """Fetch real-time sector fund flow from akshare"""
     try:
         df = ak.stock_fund_flow_industry(symbol='即时')
-        # columns: 序号, 行业, 行业指数, 行业-涨跌幅, 流入资金, 流出资金, 净额, 公司家数, 领涨股, 领涨股-涨跌幅, 当前价
         
         def parse_amount(val):
             if isinstance(val, str):
@@ -63,7 +77,6 @@ def fetch_sector_fund_flow():
             df['净流入(亿元)'] = df['净额'].apply(parse_amount)
             df['绝对净流入'] = df['净流入(亿元)'].abs()
             
-            # Clean up percentage
             if '行业-涨跌幅' in df.columns:
                 df['涨跌幅'] = df['行业-涨跌幅'].astype(str).str.replace('%', '').astype(float)
             else:
@@ -81,71 +94,108 @@ def render_macro_capital_board():
         
         df_etf = fetch_national_team_etfs()
         if not df_etf.empty:
-            cols = st.columns(len(df_etf))
-            for i, row in df_etf.iterrows():
+            # Top metrics for the top 5 ETFs by turnover
+            top5 = df_etf.head(5)
+            cols = st.columns(len(top5))
+            for i, row in top5.reset_index().iterrows():
                 with cols[i]:
                     chg = row['涨跌幅']
                     turnover = row['成交额(亿元)']
-                    
-                    # 异动判定：假设单日成交额大于 30 亿视为异动 (简化逻辑)
                     alert = "🔥 异动爆量" if turnover > 30 else ""
-                    
-                    color = "normal"
-                    if chg > 0: color = "normal" # Streamlit metric green
-                    elif chg < 0: color = "inverse" # Streamlit metric red? wait, delta_color="normal" handles +/-
                     
                     st.metric(
                         label=f"{row['名称']} {alert}",
                         value=f"{turnover:.2f} 亿",
                         delta=f"{chg:.2f}%",
-                        delta_color="normal" if chg >= 0 else "normal" # Default green up red down
+                        delta_color="normal"
                     )
+            
+            st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+            
+            # Bar chart for ALL tracked ETFs
+            df_etf_sorted = df_etf.sort_values(by='成交额(亿元)', ascending=True) # Ascending for horizontal bar
+            df_etf_sorted['颜色'] = df_etf_sorted['涨跌幅'].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
+            
+            fig_etf = px.bar(
+                df_etf_sorted,
+                x='成交额(亿元)',
+                y='名称',
+                orientation='h',
+                color='颜色',
+                color_discrete_map='identity',
+                title="📈 宽基 ETF 资金规模监控柱状图 (亿元)",
+                hover_data={
+                    '涨跌幅': ':.2f',
+                    '成交额(亿元)': ':.2f',
+                    '名称': False,
+                    '颜色': False
+                },
+                custom_data=['涨跌幅', '当前价']
+            )
+            fig_etf.update_traces(
+                hovertemplate="<b>%{y}</b><br>成交额: %{x:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
+            )
+            fig_etf.update_layout(
+                margin=dict(t=40, l=10, r=10, b=10),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=450,
+                showlegend=False,
+                xaxis_title="成交额 (亿元)",
+                yaxis_title="",
+                xaxis=dict(gridcolor='rgba(255,255,255,0.1)')
+            )
+            st.plotly_chart(fig_etf, use_container_width=True, key="macro_etf_barchart")
+            
         else:
             st.warning("暂无 ETF 数据")
             
         st.markdown("---")
-        st.markdown("### 🗺️ 全市场行业主力资金净流入排行榜")
-        st.caption("展示全市场核心行业主力资金流向。红色代表净流入，绿色代表净流出。点击或悬停查看详情。")
+        st.markdown("### 🗺️ 全市场行业主力资金净流入热力图 (Treemap)")
+        st.caption("方块大小代表资金活跃度(净额绝对值)，红色代表净流入，绿色代表净流出。点击可下钻或悬停查看详情。")
         
         df_sector = fetch_sector_fund_flow()
         if not df_sector.empty and '行业' in df_sector.columns:
-            # Sort by Net Inflow
-            df_sector = df_sector.sort_values(by='净流入(亿元)', ascending=False)
+            df_sector['板块'] = 'A股全市场'
             
-            # Color mapping: Red (#ef4444) for Inflow (>0), Green (#00b865) for Outflow (<0)
-            df_sector['颜色'] = df_sector['净流入(亿元)'].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
-
-            fig = px.bar(
+            # Center at 0. Red is inflow (+), Green is outflow (-)
+            # scale: Green (-), Dark (0), Red (+)
+            fig_tree = px.treemap(
                 df_sector,
-                x='行业',
-                y='净流入(亿元)',
-                color='颜色',
-                color_discrete_map='identity',
+                path=['板块', '行业'],
+                values='绝对净流入',
+                color='净流入(亿元)',
+                color_continuous_scale=[[0, '#00E676'], [0.5, '#262730'], [1, '#FF4B4B']],
+                color_continuous_midpoint=0,
                 hover_data={
                     '净流入(亿元)': ':.2f',
                     '涨跌幅': ':.2f',
                     '领涨股': True,
-                    '颜色': False
+                    '绝对净流入': False,
+                    '板块': False
                 },
-                custom_data=['涨跌幅', '领涨股']
+                custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
             )
             
-            fig.update_traces(
-                hovertemplate="<b>%{x}</b><br>净流入: %{y:.2f}亿<br>行业涨跌: %{customdata[0]:.2f}%<br>领涨龙头: %{customdata[1]}<extra></extra>"
+            fig_tree.update_traces(
+                texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:.2f}%",
+                hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>"
             )
             
-            fig.update_layout(
-                margin=dict(t=20, l=10, r=10, b=40),
+            fig_tree.update_layout(
+                margin=dict(t=10, l=10, r=10, b=10),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 height=550,
-                showlegend=False,
-                xaxis_title="",
-                yaxis_title="净流入 (亿元)",
-                xaxis=dict(tickangle=-45, tickfont=dict(size=10, color='#94A3B8')),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.1)')
+                coloraxis_colorbar=dict(
+                    title="净流入(亿)",
+                    thicknessmode="pixels", thickness=15,
+                    lenmode="pixels", len=300,
+                    yanchor="top", y=1,
+                    ticks="outside"
+                )
             )
             
-            st.plotly_chart(fig, use_container_width=True, key="macro_barchart")
+            st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
         else:
             st.info("当前时段暂无行业资金流向数据。")
