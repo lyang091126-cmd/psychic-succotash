@@ -346,12 +346,16 @@ def fetch_global_markets():
                 t = yf.Ticker(tk)
                 h = t.history(period='2d')
                 if len(h) >= 2:
-                    prev_close = h['Close'].iloc[-2]
-                    cur_close = h['Close'].iloc[-1]
-                    chg_pct = (cur_close - prev_close) / prev_close * 100
+                    prev_close = float(h['Close'].iloc[-2])
+                    cur_close = float(h['Close'].iloc[-1])
+                    if pd.isna(cur_close): cur_close = prev_close
+                    chg_pct = (cur_close - prev_close) / prev_close * 100 if prev_close and not pd.isna(prev_close) else 0
+                    if pd.isna(chg_pct): chg_pct = 0
                     region_data[label] = {'price': cur_close, 'chg': chg_pct}
                 elif len(h) == 1:
-                    region_data[label] = {'price': h['Close'].iloc[-1], 'chg': 0}
+                    cur_close = float(h['Close'].iloc[-1])
+                    if pd.isna(cur_close): cur_close = 0
+                    region_data[label] = {'price': cur_close, 'chg': 0}
             except Exception:
                 region_data[label] = {'price': 0, 'chg': 0}
         # 板块主线（仅美股有 ETF 数据）

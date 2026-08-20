@@ -123,37 +123,61 @@ def render_macro_capital_board():
             
             st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
             
-            # Bar chart for ALL tracked ETFs based on Main Force Net Inflow
-            df_etf_sorted = df_etf.sort_values(by='主力净流入(亿元)', ascending=True) # Ascending for horizontal bar
-            df_etf_sorted['颜色'] = df_etf_sorted['主力净流入(亿元)'].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
-            
-            fig_etf = px.bar(
-                df_etf_sorted,
-                x='主力净流入(亿元)',
-                y='名称',
-                orientation='h',
-                color='颜色',
-                color_discrete_map='identity',
-                title="📈 核心宽基 ETF 主力资金净流入 (大单+超大单) (亿元)",
-                hover_data={
+            # Bar chart for ALL tracked ETFs based on Main Force Net Inflow OR Turnover
+            # Fallback to turnover if Eastmoney net inflow API fails
+            if '主力净流入(亿元)' in df_etf.columns and df_etf['主力净流入(亿元)'].abs().sum() == 0:
+                metric_x = '成交额(亿元)'
+                title_suffix = "成交额"
+                hover_data = {
+                    '成交额(亿元)': ':.2f',
+                    '涨跌幅': ':.2f',
+                    '名称': False,
+                    '颜色': False
+                }
+                custom_data = ['涨跌幅', '当前价', '成交额(亿元)', '成交额(亿元)']
+            else:
+                metric_x = '主力净流入(亿元)'
+                title_suffix = "主力资金净流入 (大单+超大单)"
+                hover_data = {
                     '主力净流入(亿元)': ':.2f',
                     '成交额(亿元)': ':.2f',
                     '涨跌幅': ':.2f',
                     '名称': False,
                     '颜色': False
-                },
-                custom_data=['涨跌幅', '当前价', '成交额(亿元)']
+                }
+                custom_data = ['涨跌幅', '当前价', '成交额(亿元)', '主力净流入(亿元)']
+
+            df_etf_sorted = df_etf.sort_values(by=metric_x, ascending=True) # Ascending for horizontal bar
+            df_etf_sorted['颜色'] = df_etf_sorted[metric_x].apply(lambda x: '#FF4B4B' if x > 0 else '#00E676')
+            
+            fig_etf = px.bar(
+                df_etf_sorted,
+                x=metric_x,
+                y='名称',
+                orientation='h',
+                color='颜色',
+                color_discrete_map='identity',
+                title=f"📈 核心宽基 ETF {title_suffix} (亿元)",
+                hover_data=hover_data,
+                custom_data=custom_data
             )
-            fig_etf.update_traces(
-                hovertemplate="<b>%{y}</b><br>主力净流入: %{x:.2f}亿<br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
-            )
+            
+            if metric_x == '主力净流入(亿元)':
+                fig_etf.update_traces(
+                    hovertemplate="<b>%{y}</b><br>主力净流入: %{customdata[3]:.2f}亿<br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
+                )
+            else:
+                fig_etf.update_traces(
+                    hovertemplate="<b>%{y}</b><br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
+                )
+                
             fig_etf.update_layout(
                 margin=dict(t=40, l=10, r=10, b=10),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 height=450,
                 showlegend=False,
-                xaxis_title="主力净流入 (亿元)",
+                xaxis_title=f"{title_suffix} (亿元)",
                 yaxis_title="",
                 xaxis=dict(gridcolor='rgba(255,255,255,0.1)')
             )
