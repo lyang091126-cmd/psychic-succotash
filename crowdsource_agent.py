@@ -46,7 +46,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
             if total_assets > total_liab:
                 def_net_assets = (total_assets - total_liab) / 1e8
             elif mcap:
-                def_net_assets = mcap / 1e8 / 3.0 # 估算 PB=3
+                def_net_assets = mcap / 1e8 / 3.0
                 
     # 行业基准配置
     industry = info.get('industry', '')
@@ -61,15 +61,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     elif 'Beverages' in industry or 'Food' in sector:
         ref_pe, ref_pb, ref_ps = 25.0, 6.0, 7.0
 
-    st.markdown(f"""
-    <div style="background:rgba(0, 242, 254, 0.05); padding:12px 18px; border-radius:8px; border:1px solid rgba(0, 242, 254, 0.2); font-size:0.85rem; color:#94a3b8; margin-bottom:1.2rem;">
-        📌 <b>{ticker} 行业基准参考</b> &nbsp;|&nbsp; 
-        行业/板块: {sector or 'N/A'} - {industry or 'N/A'} &nbsp;|&nbsp; 
-        建议中位数: PE {ref_pe:.1f}x, PB {ref_pb:.1f}x, PS {ref_ps:.1f}x
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 布局：左侧参数输入，右侧高亮推演卡片
+    # 布局：左侧输入预测财务指标，右侧滑动设定估值倍数
     calc_c1, calc_c2 = st.columns([1, 1.2])
     
     with calc_c1:
@@ -78,102 +70,134 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
         pred_net_inc = st.number_input(f"预测净利润 ({unit_lbl})", min_value=0.0, value=float(def_net_inc) if def_net_inc > 0 else 15.0, step=2.0, key="calc_pred_net_inc")
         pred_net_assets = st.number_input(f"预测净资产 ({unit_lbl})", min_value=0.0, value=float(def_net_assets) if def_net_assets > 0 else 60.0, step=5.0, key="calc_pred_net_assets")
         
-        st.write("#### 2. 设定估值倍数")
-        target_pe = st.slider("目标 PE 倍数 (x)", min_value=1.0, max_value=150.0, value=float(ref_pe), step=0.5, key="calc_target_pe")
-        target_pb = st.slider("目标 PB 倍数 (x)", min_value=0.1, max_value=30.0, value=float(ref_pb), step=0.1, key="calc_target_pb")
-        target_ps = st.slider("目标 PS 倍数 (x)", min_value=0.1, max_value=30.0, value=float(ref_ps), step=0.1, key="calc_target_ps")
-        
     with calc_c2:
-        st.write("#### 3. 估值推演核心结论")
+        st.write("#### 2. 设定目标估值倍数")
         
-        # 计算股价与市值
-        pe_price = (pred_net_inc * target_pe) / shares_in_100m if shares_in_100m > 0 else 0.0
-        pb_price = (pred_net_assets * target_pb) / shares_in_100m if shares_in_100m > 0 else 0.0
-        ps_price = (pred_rev * target_ps) / shares_in_100m if shares_in_100m > 0 else 0.0
-        
-        pe_mcap = pred_net_inc * target_pe
-        pb_mcap = pred_net_assets * target_pb
-        ps_mcap = pred_rev * target_ps
-        
-        prices = [pe_price, pb_price, ps_price]
-        mcaps = [pe_mcap, pb_mcap, ps_mcap]
-        min_p, max_p = min(prices), max(prices)
-        min_m, max_m = min(mcaps), max(mcaps)
+        # PE Slider + Reference
+        col_pe1, col_pe2 = st.columns([2.2, 1])
+        with col_pe1:
+            target_pe = st.slider("目标 PE 倍数 (x)", min_value=1.0, max_value=150.0, value=float(ref_pe), step=0.5, key="calc_target_pe")
+        with col_pe2:
+            st.markdown(f"<div style='margin-top:20px; font-size:0.75rem; color:#94a3b8; line-height:1.2;'>行业中位 PE:<br><b style='color:#ef4444; font-size:0.9rem;'>{ref_pe:.1f}x</b></div>", unsafe_allow_html=True)
+            
+        # PB Slider + Reference
+        col_pb1, col_pb2 = st.columns([2.2, 1])
+        with col_pb1:
+            target_pb = st.slider("目标 PB 倍数 (x)", min_value=0.1, max_value=30.0, value=float(ref_pb), step=0.1, key="calc_target_pb")
+        with col_pb2:
+            st.markdown(f"<div style='margin-top:20px; font-size:0.75rem; color:#94a3b8; line-height:1.2;'>行业中位 PB:<br><b style='color:#ef4444; font-size:0.9rem;'>{ref_pb:.1f}x</b></div>", unsafe_allow_html=True)
 
-        # 霓虹高亮外框
-        st.markdown(f"""
-        <style>
-        .neon-box {{
-            background: rgba(10, 15, 30, 0.75);
-            border: 1px solid #00F2FE;
-            box-shadow: 0 0 15px rgba(0, 242, 254, 0.35);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }}
-        .neon-card {{
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 8px;
-            padding: 1rem;
-            text-align: center;
-        }}
-        .neon-card-title {{
-            font-size: 0.85rem;
-            color: #94A3B8;
-            margin-bottom: 0.3rem;
-            font-weight: 500;
-        }}
-        .neon-card-val {{
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: #00F2FE;
-            text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
-        }}
-        .neon-card-sub {{
-            font-size: 0.78rem;
-            opacity: 0.7;
-            margin-top: 0.2rem;
-            color: #94A3B8;
-        }}
-        </style>
+        # PS Slider + Reference
+        col_ps1, col_ps2 = st.columns([2.2, 1])
+        with col_ps1:
+            target_ps = st.slider("目标 PS 倍数 (x)", min_value=0.1, max_value=30.0, value=float(ref_ps), step=0.1, key="calc_target_ps")
+        with col_ps2:
+            st.markdown(f"<div style='margin-top:20px; font-size:0.75rem; color:#94a3b8; line-height:1.2;'>行业中位 PS:<br><b style='color:#ef4444; font-size:0.9rem;'>{ref_ps:.1f}x</b></div>", unsafe_allow_html=True)
         
-        <div class="neon-box">
-            <div style="font-size:1.05rem; font-weight:700; color:#00F2FE; margin-bottom:12px; text-shadow:0 0 10px rgba(0, 242, 254, 0.4); text-align:center;">
-                📐 多维估值推演核心结果
-            </div>
-            
-            <div style="display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:15px;">
-                <div class="neon-card">
-                    <div class="neon-card-title">🎯 推演合理股价区间</div>
-                    <div class="neon-card-val">{price_lbl} {min_p:.2f} ~ {price_lbl} {max_p:.2f}</div>
-                    <div class="neon-card-sub">当前股价: {price_lbl} {price:.2f}</div>
-                </div>
-                <div class="neon-card" style="border-color: rgba(0, 242, 254, 0.3);">
-                    <div class="neon-card-title">🏢 推演目标市值区间</div>
-                    <div class="neon-card-val">{min_m:.2f}亿 ~ {max_m:.2f}亿 ({currency})</div>
-                </div>
-            </div>
-            
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
-                <div style="background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; text-align:center; font-size:0.78rem; border:1px solid rgba(255,255,255,0.05);">
-                    <div style="color:#94a3b8;">PE 估值</div>
-                    <div style="font-weight:700; color:#38bdf8; margin-top:2px;">{price_lbl}{pe_price:.2f}</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; text-align:center; font-size:0.78rem; border:1px solid rgba(255,255,255,0.05);">
-                    <div style="color:#94a3b8;">PB 估值</div>
-                    <div style="font-weight:700; color:#38bdf8; margin-top:2px;">{price_lbl}{pb_price:.2f}</div>
-                </div>
-                <div style="background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; text-align:center; font-size:0.78rem; border:1px solid rgba(255,255,255,0.05);">
-                    <div style="color:#94a3b8;">PS 估值</div>
-                    <div style="font-weight:700; color:#38bdf8; margin-top:2px;">{price_lbl}{ps_price:.2f}</div>
-                </div>
-            </div>
-            <div style="font-size:0.75rem; text-align:center; color:#64748b; margin-top:10px;">
-                股本基准: {shares_in_100m:.2f} 亿股 &nbsp;|&nbsp; 纯财务公式推演，非买卖建议
-            </div>
+    # 计算估值结果
+    pe_price = (pred_net_inc * target_pe) / shares_in_100m if shares_in_100m > 0 else 0.0
+    pb_price = (pred_net_assets * target_pb) / shares_in_100m if shares_in_100m > 0 else 0.0
+    ps_price = (pred_rev * target_ps) / shares_in_100m if shares_in_100m > 0 else 0.0
+    
+    pe_mcap = pred_net_inc * target_pe
+    pb_mcap = pred_net_assets * target_pb
+    ps_mcap = pred_rev * target_ps
+    
+    prices = [pe_price, pb_price, ps_price]
+    mcaps = [pe_mcap, pb_mcap, ps_mcap]
+    min_p, max_p = min(prices), max(prices)
+    min_m, max_m = min(mcaps), max(mcaps)
+
+    # 3. 页面最下方展示一个高亮的方框结论 (Neon Highlight Box) - 必须顶格，不能包含任何前导空格！
+    html_code = f"""<style>
+.neon-box {{
+    background: rgba(10, 15, 30, 0.75);
+    border: 1px solid #00F2FE;
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.35);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 1.2rem;
+    margin-bottom: 1.5rem;
+}}
+.neon-row {{
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 20px;
+}}
+.neon-card {{
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}}
+.neon-card-title {{
+    font-size: 0.85rem;
+    color: #94A3B8;
+    margin-bottom: 0.3rem;
+    font-weight: 500;
+}}
+.neon-card-val {{
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #00F2FE;
+    text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+}}
+.neon-card-sub {{
+    font-size: 0.78rem;
+    opacity: 0.7;
+    margin-top: 0.2rem;
+    color: #94A3B8;
+}}
+.neon-details {{
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+}}
+.neon-subcard {{
+    background: rgba(255, 255, 255, 0.01);
+    padding: 10px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.82rem;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}}
+</style>
+<div class="neon-box">
+    <div style="font-size:1.1rem; font-weight:700; color:#00F2FE; margin-bottom:15px; text-shadow:0 0 10px rgba(0, 242, 254, 0.4); text-align:center;">
+        🎯 财务预测与多维相对估值推演结论
+    </div>
+    <div class="neon-row">
+        <div class="neon-card">
+            <div class="neon-card-title">推演合理股价区间</div>
+            <div class="neon-card-val">{price_lbl} {min_p:.2f} ~ {price_lbl} {max_p:.2f}</div>
+            <div class="neon-card-sub">当前实际股价: {price_lbl} {price:.2f}</div>
         </div>
-        """, unsafe_allow_html=True)
+        <div class="neon-card" style="border-color: rgba(0, 242, 254, 0.25);">
+            <div class="neon-card-title">推演目标市值区间</div>
+            <div class="neon-card-val">{min_m:.2f}亿 ~ {max_m:.2f}亿 ({currency})</div>
+            <div class="neon-card-sub">计算股本基准: {shares_in_100m:.2f} 亿股</div>
+        </div>
+    </div>
+    <div style="margin-top: 15px;" class="neon-details">
+        <div class="neon-subcard">
+            <div style="color:#94a3b8; font-size:0.75rem;">PE 估值 (利润 × PE)</div>
+            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pe_price:.2f}</div>
+            <div style="color:#64748b; font-size:0.7rem;">目标市值: {pe_mcap:.2f}亿</div>
+        </div>
+        <div class="neon-subcard">
+            <div style="color:#94a3b8; font-size:0.75rem;">PB 估值 (净资产 × PB)</div>
+            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pb_price:.2f}</div>
+            <div style="color:#64748b; font-size:0.7rem;">目标市值: {pb_mcap:.2f}亿</div>
+        </div>
+        <div class="neon-subcard">
+            <div style="color:#94a3b8; font-size:0.75rem;">PS 估值 (营收 × PS)</div>
+            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{ps_price:.2f}</div>
+            <div style="color:#64748b; font-size:0.7rem;">目标市值: {ps_mcap:.2f}亿</div>
+        </div>
+    </div>
+</div>"""
+    st.markdown(html_code, unsafe_allow_html=True)
 
     # 下方原 UGC 录入功能
     st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
