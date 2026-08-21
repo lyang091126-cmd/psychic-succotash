@@ -624,15 +624,38 @@ def fetch_all_data(ticker_input):
     # ⚠️ 稳定性修复：stock.info 在接口限流(Too Many Requests)时会直接抛异常，
     # 之前未做 try/except 会导致整页崩溃。这里加入重试 + 兜底，绝不让异常向上传播。
     data['info'] = {}
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             data['info'] = stock.info or {}
-            break
+            if data['info'].get('shortName') or data['info'].get('currentPrice'):
+                break
         except Exception:
-            if attempt == 0:
-                time.sleep(1.2)
+            if attempt < 2:
+                time.sleep(1.5)
             else:
                 data['info'] = {}
+
+    # ⚠️ 关键修复：当 stock.info 被限流返回空字典时，使用 fast_info 填充核心指标
+    if not data['info'].get('currentPrice') and not data['info'].get('trailingPE'):
+        try:
+            fi = stock.fast_info
+            if fi is not None:
+                if not data['info'].get('currentPrice'):
+                    data['info']['currentPrice'] = getattr(fi, 'last_price', None)
+                    data['info']['regularMarketPrice'] = getattr(fi, 'last_price', None)
+                if not data['info'].get('previousClose'):
+                    data['info']['previousClose'] = getattr(fi, 'previous_close', None)
+                if not data['info'].get('marketCap'):
+                    data['info']['marketCap'] = getattr(fi, 'market_cap', None)
+                if not data['info'].get('fiftyTwoWeekHigh'):
+                    data['info']['fiftyTwoWeekHigh'] = getattr(fi, 'year_high', None)
+                if not data['info'].get('fiftyTwoWeekLow'):
+                    data['info']['fiftyTwoWeekLow'] = getattr(fi, 'year_low', None)
+                if not data['info'].get('currency'):
+                    data['info']['currency'] = getattr(fi, 'currency', 'USD')
+        except Exception:
+            pass
+
     try:
         data['hist_1y'] = stock.history(period="1y").dropna(subset=['Close'])
     except Exception:
@@ -663,6 +686,28 @@ def fetch_all_data(ticker_input):
         data['quarterly_financials'] = stock.quarterly_financials
     except Exception:
         data['quarterly_financials'] = None
+
+    # 获取季度利润表（用于美股/港股业务分部收入展示）
+    try:
+        data['quarterly_income_stmt'] = stock.quarterly_income_stmt
+    except Exception:
+        data['quarterly_income_stmt'] = None
+
+    # 获取年度利润表（同上，更完整的收入分部数据）
+    try:
+        data['income_stmt'] = stock.income_stmt
+    except Exception:
+        data['income_stmt'] = None
+
+    # 获取公司业务概要（longBusinessSummary）
+    if not data['info'].get('longBusinessSummary'):
+        try:
+            # 单独再试一次获取 info 中的业务描述
+            bs = stock.info.get('longBusinessSummary', '')
+            if bs:
+                data['info']['longBusinessSummary'] = bs
+        except Exception:
+            pass
 
     pure_code = ticker_input.replace('.SS', '').replace('.SZ', '')
     is_a_share = ticker_input.endswith('.SS') or ticker_input.endswith('.SZ') or pure_code.isdigit()
@@ -740,6 +785,25 @@ def fetch_all_data(ticker_input):
         data['ak_news'] = None
         data['ak_forecast'] = None
         data['ak_info'] = None
+
+    # ⚠️ 关键修复：当 stock.info 缺少 PE 等指标时，从 hist_1y 和 quarterly_financials 计算补全
+    if not data['info'].get('trailingPE') and not data['hist_1y'].empty:
+        try:
+            qf = data.get('quarterly_financials')
+            if qf is not None and not qf.empty:
+                # 尝试从最近4个季度的净利润计算 TTM EPS
+                for eps_key in ['Basic EPS', 'Diluted EPS']:
+                    if eps_key in qf.index:
+                        eps_vals = qf.loc[eps_key].dropna().head(4)
+                        if len(eps_vals) >= 1:
+                            eps_ttm = float(eps_vals.sum()) if len(eps_vals) == 4 else float(eps_vals.iloc[0]) * 4
+                            if eps_ttm > 0:
+                                cur_p = data['info'].get('currentPrice') or float(data['hist_1y']['Close'].iloc[-1])
+                                data['info']['trailingPE'] = round(cur_p / eps_ttm, 2)
+                                data['info']['trailingEps'] = round(eps_ttm, 2)
+                            break
+        except Exception:
+            pass
 
     return data
 
@@ -1768,6 +1832,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown(f"### 🏢 {s_title_name} 主营业务构成 <span style='font-size:0.75rem; opacity:0.6;'>数据来源标注见下</span>", unsafe_allow_html=True)
                 main_comp = all_data.get('main_composition')
                 if main_comp is not None and not main_comp.empty:
+                    # ==== A 股：akshare 主营构成数据 ====
                     try:
                         c_pie1, c_pie2 = st.columns(2)
                         with c_pie1:
@@ -1799,7 +1864,101 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     except Exception:
                         st.info("⚠️ 主营构成数据格式解析异常，暂不展示，避免误导。")
                 else:
-                    st.info("⚠️ 暂无该标的真实主营业务构成数据。本站不使用编造图表。")
+                    # ==== 美股/港股：从 yfinance 季度利润表 + 业务概要提取 ====
+                    us_biz_shown = False
+                    try:
+                        # 1. 尝试从季度利润表获取收入/利润关键行
+                        qis = all_data.get('quarterly_income_stmt')
+                        ais = all_data.get('income_stmt')
+                        fin_stmt = qis if (qis is not None and not qis.empty) else ais
+                        if fin_stmt is not None and not fin_stmt.empty:
+                            # 提取关键财务行（收入/成本/毛利/运营利润/净利）
+                            key_rows = ['Total Revenue', 'Cost Of Revenue', 'Gross Profit',
+                                        'Operating Income', 'Operating Expense', 'Net Income',
+                                        'EBITDA', 'Research And Development']
+                            available_rows = [r for r in key_rows if r in fin_stmt.index]
+                            if available_rows:
+                                display_df = fin_stmt.loc[available_rows].head(4)  # 最近4期
+                                # 格式化列名为日期字符串
+                                display_df.columns = [str(c.date()) if hasattr(c, 'date') else str(c) for c in display_df.columns]
+                                # 格式化数值为亿/万
+                                def fmt_fin_num(v):
+                                    if pd.isna(v): return 'N/A'
+                                    v = float(v)
+                                    if abs(v) >= 1e9: return f"{v/1e9:.2f}B"
+                                    if abs(v) >= 1e6: return f"{v/1e6:.1f}M"
+                                    return f"{v:,.0f}"
+                                display_formatted = display_df.applymap(fmt_fin_num)
+                                # 行名中英文映射
+                                row_name_map = {
+                                    'Total Revenue': '📊 总营收 (Revenue)',
+                                    'Cost Of Revenue': '💰 营业成本 (COGS)',
+                                    'Gross Profit': '📈 毛利 (Gross Profit)',
+                                    'Operating Income': '🏢 营业利润 (Operating Income)',
+                                    'Operating Expense': '📋 营业费用 (OpEx)',
+                                    'Net Income': '💵 净利润 (Net Income)',
+                                    'EBITDA': '📐 EBITDA',
+                                    'Research And Development': '🔬 研发支出 (R&D)',
+                                }
+                                display_formatted.index = [row_name_map.get(r, r) for r in display_formatted.index]
+                                is_quarterly = qis is not None and not qis.empty
+                                period_label = '季度' if is_quarterly else '年度'
+                                st.markdown(f"#### 📊 {s_title_name} 近期{period_label}利润表关键指标 <span style='font-size:0.75rem; opacity:0.6;'>来源: yfinance</span>", unsafe_allow_html=True)
+                                st.dataframe(display_formatted, use_container_width=True)
+
+                                # 如果有多期总营收，绘制营收趋势柱状图
+                                if 'Total Revenue' in fin_stmt.index:
+                                    rev_series = fin_stmt.loc['Total Revenue'].dropna().head(8)
+                                    if len(rev_series) >= 2:
+                                        rev_df = pd.DataFrame({
+                                            'Period': [str(c.date()) if hasattr(c, 'date') else str(c) for c in rev_series.index],
+                                            'Revenue': [float(v)/1e9 for v in rev_series.values]
+                                        })
+                                        rev_df = rev_df.iloc[::-1]  # 按时间正序
+                                        fig_rev = px.bar(rev_df, x='Period', y='Revenue',
+                                                        title=f"{s_title_name} {period_label}营收趋势 (单位: 十亿 {info.get('currency', 'USD')})",
+                                                        color_discrete_sequence=['#00b865'])
+                                        fig_rev.update_layout(
+                                            height=280, template='plotly_dark',
+                                            margin=dict(l=10, r=10, t=40, b=10),
+                                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                            xaxis_title='', yaxis_title='Revenue (B)'
+                                        )
+                                        st.plotly_chart(fig_rev, use_container_width=True)
+                                us_biz_shown = True
+                    except Exception:
+                        pass
+
+                    # 2. 展示公司业务概要（longBusinessSummary）
+                    try:
+                        biz_summary = info.get('longBusinessSummary', '')
+                        if biz_summary and len(biz_summary) > 50:
+                            st.markdown(f"#### 📝 {s_title_name} 业务概要 <span style='font-size:0.75rem; opacity:0.6;'>来源: yfinance</span>", unsafe_allow_html=True)
+                            st.markdown(f'<div style="background:rgba(20,24,33,0.5); padding:15px; border-radius:10px; border:1px solid rgba(255,255,255,0.05); font-size:0.88rem; line-height:1.7; color:#e2e8f0;">{biz_summary}</div>', unsafe_allow_html=True)
+                            us_biz_shown = True
+                    except Exception:
+                        pass
+
+                    # 3. 展示行业/板块分类
+                    try:
+                        sector_val = info.get('sector', '')
+                        industry_val = info.get('industry', '')
+                        employees = info.get('fullTimeEmployees', '')
+                        website = info.get('website', '')
+                        if sector_val or industry_val:
+                            meta_items = []
+                            if sector_val: meta_items.append(f"<b>板块:</b> {sector_val}")
+                            if industry_val: meta_items.append(f"<b>细分行业:</b> {industry_val}")
+                            if employees: meta_items.append(f"<b>全职员工:</b> {employees:,}" if isinstance(employees, int) else f"<b>全职员工:</b> {employees}")
+                            if website: meta_items.append(f"<b>官网:</b> <a href='{website}' style='color:#38bdf8;'>{website}</a>")
+                            meta_html = " &nbsp;|&nbsp; ".join(meta_items)
+                            st.markdown(f'<div style="background:rgba(0,242,254,0.05); padding:10px 15px; border-radius:8px; border:1px solid rgba(0,242,254,0.15); font-size:0.85rem; color:#94a3b8; margin-top:0.8rem;">{meta_html}</div>', unsafe_allow_html=True)
+                            us_biz_shown = True
+                    except Exception:
+                        pass
+
+                    if not us_biz_shown:
+                        st.info(f"⚠️ 暂无 {s_title_name} 的业务构成数据（可能是 yfinance 接口限流），请稍后重试。")
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
