@@ -307,7 +307,7 @@ def render_macro_capital_board():
                 hist_etf = hist_etf.dropna().tail(30)
                 
                 df_trend = pd.DataFrame({
-                    '日期': [d.strftime('%m-%d') for d in hist_etf.index],
+                    '日期': [d.strftime('%Y-%m-%d') for d in hist_etf.index],
                     '净流入(亿元)': hist_etf['net_flow'].values
                 })
                 
@@ -327,7 +327,7 @@ def render_macro_capital_board():
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
                     template='plotly_dark',
-                    xaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
+                    xaxis=dict(gridcolor='rgba(255,255,255,0.05)', type='category'),
                     yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="净额 (亿元)")
                 )
                 

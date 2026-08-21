@@ -11,6 +11,15 @@ import math
 from plotly.subplots import make_subplots
 from openai import OpenAI
 
+import importlib
+import macro_capital
+import crowdsource_agent
+import market_tape
+
+importlib.reload(macro_capital)
+importlib.reload(crowdsource_agent)
+importlib.reload(market_tape)
+
 # 初始化全局变量，防止 "name 'all_data' is not defined" 报错
 all_data = {}
 api_key_input = st.session_state.get("api_key_state", "")
