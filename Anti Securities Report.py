@@ -1018,7 +1018,209 @@ def analyze_kline_and_chanlun(df):
 </div>"""
     return html
 
-# 产业链知识库：按行业/板块映射上中下游代表企业与下游分析
+# =============================================================================
+# 产业链知识库 —— 按 Ticker 代码精确匹配（最高优先级，不依赖 yfinance info 字段）
+# =============================================================================
+TICKER_CHAIN_DB = {
+    # ---- 美股 AI/半导体核心标的 ----
+    'NVDA': {
+        'up': ['台积电 TSMC (5nm/4nm 晶圆代工)', '三星电子 (HBM3E 高带宽存储)', 'SK海力士 (HBM 供应商)', '阿斯麦 ASML (EUV 光刻机)'],
+        'mid_role': 'GPU/AI 加速芯片设计 (数据中心 & 游戏 & 汽车)',
+        'down': ['微软 Azure / 谷歌 GCP / 亚马逊 AWS (云厂商)', 'Meta / OpenAI / 字节跳动 (AI 大模型训练)', '特斯拉 (自动驾驶 FSD)', '全球游戏玩家 (GeForce)'],
+        'down_note': 'AI 算力需求爆发式增长，NVIDIA 数据中心收入已超过游戏业务成为第一大收入来源，CoWoS 先进封装产能为核心瓶颈'
+    },
+    'AMD': {
+        'up': ['台积电 TSMC (先进制程代工)', '日月光/矽品 (封装测试)', '美光 Micron (DRAM/HBM)'],
+        'mid_role': 'CPU/GPU/FPGA 芯片设计 (数据中心 & PC & 嵌入式)',
+        'down': ['微软 / 谷歌 / Meta (云数据中心 MI300 系列)', 'PC OEM 厂商 (联想/惠普/戴尔)', '索尼 PS5 / 微软 Xbox (游戏主机定制芯片)'],
+        'down_note': 'MI300X 系列 GPU 加速器直接对标 NVIDIA H100，Instinct 产品线在 AI 推理市场份额持续提升'
+    },
+    'TSM': {
+        'up': ['阿斯麦 ASML (EUV 光刻机)', '应用材料 AMAT (CVD/PVD 沉积)', '东京电子 TEL (刻蚀)', '信越化学 (硅晶圆)'],
+        'mid_role': '全球最大晶圆代工厂 (3nm/5nm 先进制程)',
+        'down': ['苹果 Apple (A/M 系列芯片)', 'NVIDIA (GPU 代工)', '高通 Qualcomm (骁龙芯片)', 'AMD / 联发科 / 博通'],
+        'down_note': '全球先进制程代工市占率超 90%，AI 芯片需求推动 CoWoS 先进封装产能持续扩张'
+    },
+    'AVGO': {
+        'up': ['台积电 TSMC (芯片代工)', 'Amkor (封装)', '日本电产 (被动元器件)'],
+        'mid_role': '网络/存储/定制 ASIC 芯片设计 & 基础设施软件',
+        'down': ['谷歌 TPU (定制 AI 芯片)', '苹果 (Wi-Fi/蓝牙芯片)', '数据中心交换机 (思科/Arista)', '电信运营商 5G 基站'],
+        'down_note': '博通 VMware 收购完成后转型为基础设施软件+半导体双引擎，谷歌 TPU 定制 ASIC 为高增长驱动力'
+    },
+    'INTC': {
+        'up': ['阿斯麦 ASML (光刻机)', '应用材料 AMAT', 'Lam Research (刻蚀设备)'],
+        'mid_role': 'CPU 设计与 IDM 自有晶圆制造 (Intel Foundry Services)',
+        'down': ['PC OEM (联想/惠普/戴尔)', '数据中心 (Xeon 至强)', '美国政府/国防 (CHIPS 法案)'],
+        'down_note': 'Intel 18A/20A 制程追赶台积电，IFS 代工业务承接美国本土芯片制造需求'
+    },
+    'QCOM': {
+        'up': ['台积电 TSMC (芯片代工)', '三星 (部分代工)', 'Arm (架构授权)'],
+        'mid_role': '移动 SoC 芯片设计 (骁龙) & 5G 基带/射频前端',
+        'down': ['三星 / 小米 / OPPO / vivo (安卓手机)', '宝马 / 通用 (汽车座舱芯片)', 'PC 厂商 (骁龙 X Elite 笔记本)'],
+        'down_note': '端侧 AI 大模型推理驱动骁龙 8 Gen 3/4 高端芯片升级，汽车/IoT 多元化降低手机依赖'
+    },
+    'MU': {
+        'up': ['应用材料 AMAT (沉积设备)', 'Lam Research (刻蚀设备)', '信越化学 (硅晶圆)'],
+        'mid_role': 'DRAM & NAND 存储芯片设计与制造 (IDM)',
+        'down': ['NVIDIA / AMD (HBM3E 配套 GPU)', '苹果 / 三星 (手机存储)', '数据中心服务器 (DDR5)'],
+        'down_note': 'HBM (高带宽存储) 需求随 AI GPU 出货量同步爆发，美光 HBM3E 产能已被预订至 2025 年底'
+    },
+    'SMCI': {
+        'up': ['NVIDIA (GPU)', 'AMD (CPU/GPU)', '高阶 PCB 供应商', '散热模组/液冷方案商'],
+        'mid_role': 'AI 服务器 & 存储系统整机设计与组装',
+        'down': ['微软 / Meta / 谷歌 / 亚马逊 (超大规模云厂商)', 'AI 初创企业', '主权 AI 基础设施'],
+        'down_note': '超微电脑是 NVIDIA GPU 服务器最大的第三方组装商之一，液冷散热方案为核心差异化竞争力'
+    },
+    # ---- 美股科技巨头 ----
+    'AAPL': {
+        'up': ['台积电 TSMC (A/M 系列芯片代工)', '三星 SDI / LG (OLED 屏幕)', '立讯精密 (连接器/组装)', '博通 (Wi-Fi/蓝牙芯片)'],
+        'mid_role': 'iPhone / Mac / iPad / Apple Watch / Vision Pro 设计与品牌运营',
+        'down': ['全球消费者 (换机周期约 3-4 年)', '运营商渠道 (AT&T/Verizon/中国移动)', 'App Store 开发者生态 (服务收入)'],
+        'down_note': '服务业务 (App Store/Apple Music/iCloud) 毛利率超 70%，已成为利润增长第二引擎；Vision Pro 开启空间计算新品类'
+    },
+    'MSFT': {
+        'up': ['NVIDIA (GPU 算力)', 'AMD (CPU/GPU)', '数据中心基础设施 (服务器/光模块)'],
+        'mid_role': 'Azure 云计算 & Office 365 & Windows & GitHub Copilot',
+        'down': ['全球企业 IT (Office/Teams/Azure)', 'OpenAI 合作伙伴 (Copilot AI 生态)', '游戏玩家 (Xbox/动视暴雪)'],
+        'down_note': 'Azure AI 服务收入同比增速超 50%，Copilot 企业版付费用户快速增长，OpenAI 独家云合作伙伴'
+    },
+    'GOOGL': {
+        'up': ['自研 TPU (谷歌 Tensor 芯片)', 'NVIDIA (GPU 训练集群)', '博通 Broadcom (定制 ASIC)'],
+        'mid_role': 'Google 搜索 & YouTube 广告 & GCP 云 & Waymo 自动驾驶 & Android',
+        'down': ['全球广告主 (搜索/YouTube 广告)', '企业云客户 (GCP)', 'Android 手机生态 (三星/小米)'],
+        'down_note': 'Gemini 大模型深度整合搜索与云服务，YouTube 广告收入持续两位数增长，Waymo 商业化落地加速'
+    },
+    'AMZN': {
+        'up': ['NVIDIA / Intel (数据中心芯片)', '自研 Graviton ARM 芯片 & Trainium AI 芯片', '物流基础设施 (机器人/仓储)'],
+        'mid_role': 'AWS 云计算 (全球第一) & 电商零售 & Prime 会员 & Alexa',
+        'down': ['全球企业 (AWS 云服务)', '消费者 (电商/Prime Video)', '第三方卖家 (FBA 物流)'],
+        'down_note': 'AWS 占全球云市场份额 31%，Bedrock 托管式 AI 服务增长迅猛，电商广告业务已成为第三增长极'
+    },
+    'META': {
+        'up': ['NVIDIA (GPU 训练集群, H100/B200)', '博通 (定制 MTIA 芯片)', '数据中心基础设施'],
+        'mid_role': 'Facebook / Instagram / WhatsApp 社交广告 & Reality Labs (Quest VR)',
+        'down': ['全球广告主 (精准社交广告)', '消费者 (社交/Reels 短视频)', 'VR/AR 开发者生态'],
+        'down_note': 'Llama 开源大模型生态持续扩张，Reels 短视频广告变现效率快速提升，AI 驱动广告推荐精准度'
+    },
+    'NFLX': {
+        'up': ['内容制作工作室 (好莱坞/韩国/日本)', '云基础设施 (AWS)', 'CDN 网络'],
+        'mid_role': '全球流媒体平台 (原创内容 + 广告套餐)',
+        'down': ['全球 2.8 亿付费用户', '广告主 (广告支持套餐)', '内容授权方'],
+        'down_note': '广告支持套餐 (含广告低价版) 用户增长强劲，密码共享打击策略转化为付费用户增量'
+    },
+    'TSLA': {
+        'up': ['宁德时代 / 比亚迪 / 松下 (动力电池)', '自研 FSD 芯片 (HW4.0)', '博世 / 英飞凌 (车规级芯片)'],
+        'mid_role': '纯电动汽车制造 & 自动驾驶 FSD & 储能 (Megapack) & 人形机器人 (Optimus)',
+        'down': ['全球消费者 (Model 3/Y/S/X)', '储能/电力公司 (Megapack 大储)', '未来 Robotaxi 出行平台'],
+        'down_note': 'FSD 完全自动驾驶软件订阅为高毛利增长点，Megapack 储能业务装机量同比翻倍，Optimus 人形机器人远期想象空间巨大'
+    },
+    # ---- A 股核心标的 (按 yfinance ticker 格式) ----
+    '600519.SS': {
+        'up': ['高粱/小麦种植基地 (贵州/四川)', '包材企业 (玻璃瓶/纸箱/瓶盖)', '酒曲/微生物发酵技术'],
+        'mid_role': '贵州茅台：酱香型白酒酿造 & 品牌运营 (飞天/生肖/精品系列)',
+        'down': ['经销商/专卖店体系 (全国 2000+ 经销商)', '电商直营 (i茅台/天猫旗舰店)', '商务/宴请/收藏消费场景'],
+        'down_note': '飞天茅台出厂价 1169 元，终端市场价约 2500 元，渠道利润丰厚；i茅台 App 直销占比持续提升'
+    },
+    '300750.SZ': {
+        'up': ['天齐锂业/赣锋锂业 (碳酸锂)', '容百科技 (正极材料)', '恩捷股份 (隔膜)', '天赐材料 (电解液)'],
+        'mid_role': '宁德时代：动力电池 & 储能电池研发制造 (全球市占率 37%)',
+        'down': ['特斯拉 / 宝马 / 奔驰 / 蔚来 / 理想 (新能源车企)', '储能电站运营商', '电动船舶/矿卡'],
+        'down_note': '麒麟电池/神行超充电池为技术领先产品，海外产能布局匈牙利/德国工厂，钠离子电池量产在即'
+    },
+    '002594.SZ': {
+        'up': ['比亚迪半导体 (自研 IGBT/SiC)', '比亚迪弗迪电池 (刀片电池垂直整合)', '自研电驱/电控系统'],
+        'mid_role': '比亚迪：新能源汽车整车 + 动力电池 + 半导体全产业链垂直整合',
+        'down': ['国内消费者 (王朝/海洋/仰望/方程豹系列)', '海外市场 (东南亚/欧洲/南美)', '公交/出租车队'],
+        'down_note': '全球新能源汽车销量冠军，刀片电池垂直整合降本优势显著，智能驾驶 "天神之眼" 加速迭代'
+    },
+    '688981.SS': {
+        'up': ['北方华创 (刻蚀/CVD 设备)', '中微公司 (刻蚀设备)', '沪硅产业 (硅片)', '盛美上海 (清洗设备)'],
+        'mid_role': '中芯国际：中国大陆最大晶圆代工厂 (14nm/28nm 成熟制程)',
+        'down': ['高通 / 联发科 (成熟制程芯片代工)', '兆易创新 / 韦尔股份 (国内设计公司)', '汽车/工业/IoT 芯片需求'],
+        'down_note': '美国实体清单限制先进设备进口，聚焦 28nm 及以上成熟制程扩产，国产替代订单持续增加'
+    },
+    '300502.SZ': {
+        'up': ['光芯片供应商 (II-VI/Lumentum)', '高速 DSP 芯片 (博通/Marvell)', '精密光学元器件'],
+        'mid_role': '新易盛：高速光模块研发制造 (800G/1.6T 数据中心光模块)',
+        'down': ['谷歌 / 亚马逊 / Meta / 微软 (北美云厂商)', '中国移动/电信/联通 (5G 前传)', 'AI 算力集群互联'],
+        'down_note': '800G 光模块放量出货，1.6T 产品研发领先，北美头部云厂商为核心客户，AI 算力互联需求爆发'
+    },
+    '300308.SZ': {
+        'up': ['光芯片/EML 激光器', '高速 DSP (博通 Tomahawk)', 'VCSEL/硅光芯片'],
+        'mid_role': '中际旭创：全球光模块龙头 (800G/1.6T 数据中心光互联)',
+        'down': ['谷歌 / 亚马逊 / Meta / 微软 (全球云厂商)', 'AI 训练集群 (GPU 间高速互联)', '5G 承载网'],
+        'down_note': '全球 800G 光模块市占率第一，1.6T LPO 光模块率先送样，受益 AI 算力基建投资周期'
+    },
+    '002371.SZ': {
+        'up': ['高纯靶材/气体/化学品', '精密机械加工', '自研核心零部件'],
+        'mid_role': '北方华创：半导体设备龙头 (刻蚀/CVD/PVD/氧化扩散炉)',
+        'down': ['中芯国际 / 长江存储 / 华虹半导体 (国内晶圆厂)', '京东方 / 华星光电 (面板厂)', '光伏电池片厂商'],
+        'down_note': '国产半导体设备替代率持续提升，刻蚀/薄膜沉积设备进入主流产线验证，光伏设备贡献增量收入'
+    },
+    '002475.SZ': {
+        'up': ['连接器精密模具', '自动化组装产线', '精密金属/塑胶零部件'],
+        'mid_role': '立讯精密：消费电子精密制造 (苹果 AirPods/Apple Watch/iPhone 组装)',
+        'down': ['苹果 Apple (第一大客户)', '华为 / 小米 (安卓生态)', '汽车 Tier 1 (线束/连接器)'],
+        'down_note': '苹果 iPhone 整机组装份额持续提升，汽车线束/连接器业务为第二增长曲线'
+    },
+    '600036.SS': {
+        'up': ['央行货币政策 (MLF/LPR)', '同业资金市场', '债券/票据市场'],
+        'mid_role': '招商银行：零售银行之王 (财富管理 & 信用卡 & 个人贷款)',
+        'down': ['个人客户 (1.9 亿零售客户)', '小微企业贷款', '私人银行/财富管理客户'],
+        'down_note': '零售 AUM 规模超 13 万亿，财富管理手续费收入行业领先，ROE 连续多年保持 15%+'
+    },
+    '601318.SS': {
+        'up': ['再保险公司 (慕尼黑再/瑞士再)', '医疗/汽车服务网络', '投资市场 (权益/固收)'],
+        'mid_role': '中国平安：综合金融集团 (保险 + 银行 + 科技)',
+        'down': ['个人保险客户 (2.3 亿+)', '企业团险客户', '平安银行/陆金所用户'],
+        'down_note': '寿险改革"新模式"推动 NBV 恢复增长，医疗养老生态圈构建中，科技赋能降本增效'
+    },
+    # ---- 港股核心标的 ----
+    '0700.HK': {
+        'up': ['云计算基础设施 (自建数据中心)', 'NVIDIA/AMD (GPU 算力)', '内容创作者/游戏开发商'],
+        'mid_role': '腾讯控股：社交 (微信/QQ) + 游戏 + 云 + 金融科技',
+        'down': ['12 亿微信用户 (社交/支付)', '全球游戏玩家 (王者荣耀/原神代理)', '企业微信/腾讯云客户'],
+        'down_note': '视频号广告/小程序电商为新增长引擎，海外游戏收入占比持续提升，混元大模型赋能内部产品'
+    },
+    '1810.HK': {
+        'up': ['高通 (骁龙芯片)', '三星/京东方 (屏幕)', '索尼 (摄像头传感器)'],
+        'mid_role': '小米集团：智能手机 + AIoT 生态 + 小米汽车 SU7',
+        'down': ['全球消费者 (手机/IoT 设备)', '小米之家线下渠道', '小米汽车车主'],
+        'down_note': '小米 SU7 交付量快速爬坡，高端手机份额提升，AIoT 连接设备数超 7 亿台'
+    },
+    '3690.HK': {
+        'up': ['云计算基础设施', '配送骑手网络 (超 700 万骑手)', '商户合作伙伴'],
+        'mid_role': '美团：本地生活服务平台 (外卖 + 到店 + 酒旅 + 优选)',
+        'down': ['消费者 (外卖/团购/酒店预订)', '餐饮/零售商户', '酒店/旅游服务商'],
+        'down_note': '即时零售 (美团闪购) 高速增长，海外业务 (Keeta) 拓展东南亚，AI 提升配送效率'
+    },
+    'BABA': {
+        'up': ['云计算基础设施 (阿里云)', '物流网络 (菜鸟)', '支付系统 (支付宝/蚂蚁)'],
+        'mid_role': '阿里巴巴：电商 (淘宝/天猫/1688) + 阿里云 + 本地生活 + 国际电商',
+        'down': ['消费者 (淘宝/天猫 9 亿活跃用户)', '品牌商家/中小卖家', '企业云客户 (阿里云)'],
+        'down_note': '1688 平源厂货模式增长强劲，阿里云 AI 推理服务收入高速增长，国际电商 (Lazada/AliExpress) 扩张'
+    },
+    'PDD': {
+        'up': ['中国制造业产业带工厂', '物流合作伙伴 (极兔/中通)', '云基础设施'],
+        'mid_role': '拼多多：社交电商 (拼多多国内) + 跨境电商 (Temu)',
+        'down': ['价格敏感型消费者 (下沉市场)', 'Temu 全球用户 (北美/欧洲/日韩)', '农产品消费者'],
+        'down_note': 'Temu 全托管模式快速渗透欧美市场，国内百亿补贴持续获客，利润率远超行业平均'
+    },
+    'JD': {
+        'up': ['品牌供应商 (家电/3C 直采)', '京东物流 (自建仓配网络)', '达达集团 (即时配送)'],
+        'mid_role': '京东：自营电商 (家电/3C 优势) + 京东物流 + 京东健康',
+        'down': ['品质消费者 (一二线城市)', '企业采购客户', '京东 PLUS 会员'],
+        'down_note': '自营供应链物流体验行业领先，京东物流外部客户收入占比持续提升，低价策略拓展下沉市场'
+    },
+    'BIDU': {
+        'up': ['NVIDIA (GPU 算力)', '自研昆仑芯片', '数据中心基础设施'],
+        'mid_role': '百度：搜索广告 + 文心一言大模型 + Apollo 自动驾驶 + 百度智能云',
+        'down': ['广告主 (搜索/信息流广告)', '萝卜快跑 Robotaxi 乘客', '企业 AI 云客户'],
+        'down_note': '文心大模型 API 日调用量突破 5 亿次，萝卜快跑 Robotaxi 在武汉等城市商业化运营'
+    },
+}
+
+# 产业链知识库：按行业/板块映射上中下游（二级回退）
 CHAIN_DB = {
     'Auto Manufacturers': {
         'up': ['宁德时代 (电池)', '博世 (Bosch, 零部件)', '英飞凌 (芯片)'],
@@ -1028,7 +1230,7 @@ CHAIN_DB = {
     },
     'Semiconductors': {
         'up': ['阿斯麦 (ASML, 光刻机)', '应用材料 (AMAT, 沉积)', '信越化学 (硅片)'],
-        'mid_role': '芯片设计 / 代工制造 (台积电)',
+        'mid_role': '芯片设计 / 代工制造',
         'down': ['智能手机 (苹果/三星/小米)', '数据中心/AI服务器 (NVIDIA/微软)', '汽车/工业电子'],
         'down_note': 'AI 算力爆发拉动先进制程 (3nm/5nm) 及 HBM 存储供不应求，消费电子复苏带动成熟制程回暖'
     },
@@ -1036,7 +1238,7 @@ CHAIN_DB = {
         'up': ['高纯金属与气体', '光学镜片 (蔡司)', '精密机械构件'],
         'mid_role': '半导体设备研发与制造',
         'down': ['晶圆代工厂 (台积电/中芯国际)', '存储芯片厂 (三星/海力士/美光)', 'IDM 厂商 (Intel/TI)'],
-        'down_note': '全球晶圆厂资本开支出持续高位，国产化替代加速，先进封装 (CoWoS) 设备需求景气度极高'
+        'down_note': '全球晶圆厂资本开支持续高位，国产化替代加速，先进封装 (CoWoS) 设备需求景气度极高'
     },
     'Software—Infrastructure': {
         'up': ['数据中心服务器 (戴尔/浪潮)', '高速光模块', '云算力芯片 (GPU/TPU)'],
@@ -1044,11 +1246,23 @@ CHAIN_DB = {
         'down': ['企业级 IT 部门', 'SaaS 应用开发者', '互联网与金融机构'],
         'down_note': '生成式 AI 推动企业级云服务从传统 IaaS 向 PaaS/MaaS 深度升级，软件订阅收入年化增速超 20%'
     },
+    'Internet Content & Information': {
+        'up': ['云计算基础设施', 'GPU 算力 (NVIDIA/AMD)', '内容创作者/开发者'],
+        'mid_role': '互联网平台 & 信息服务',
+        'down': ['消费者用户 (搜索/社交/购物)', '广告主 (品牌/效果广告)', '企业级 SaaS/云客户'],
+        'down_note': 'AI 大模型重塑搜索与推荐引擎，短视频/直播电商成为流量变现核心场景'
+    },
+    'Internet Retail': {
+        'up': ['品牌供应商/工厂', '物流网络 (仓储/配送)', '支付系统'],
+        'mid_role': '电商零售平台',
+        'down': ['消费者 (线上购物)', '第三方卖家/品牌商', '广告主'],
+        'down_note': '即时零售与社交电商持续增长，跨境电商全托管模式加速全球化扩张'
+    },
     'Hardware, Tech Supply Chain': {
         'up': ['高阶 PCB 板', '高速光模块 (800G/1.6T)', '电源/散热模组'],
         'mid_role': 'AI 服务器整机集成与封装',
         'down': ['微软 / 谷歌 / 亚马逊 / Meta (云厂商)', 'AI 大模型初创企业', '科研机构与算力中心'],
-        'down_note': 'AI算力需求爆发式增长，云厂商资本开支出持续上行，数据中心GPU供不应求'
+        'down_note': 'AI算力需求爆发式增长，云厂商资本开支持续上行，数据中心GPU供不应求'
     },
     'Consumer Electronics': {
         'up': ['台积电 (芯片代工)', '三星SDI (屏幕)', '立讯精密 (连接器)'],
@@ -1068,68 +1282,92 @@ CHAIN_DB = {
         'down': ['新能源车企 (特斯拉/比亚迪)', '储能电站', '消费电子电池'],
         'down_note': '全球电动车渗透率加速，储能需求受可再生能源装机驱动，锂价波动影响全链利润'
     },
+    'Banks—Regional': {
+        'up': ['央行货币政策 (MLF/LPR)', '同业资金市场', '债券市场'],
+        'mid_role': '商业银行 (存贷款/财富管理)',
+        'down': ['个人客户 (储蓄/房贷/消费贷)', '企业客户 (经营贷/贸易融资)', '政府/城投融资'],
+        'down_note': '利率下行周期压缩净息差，财富管理与中间业务收入成为转型方向'
+    },
+    'Insurance—Diversified': {
+        'up': ['再保险公司', '医疗/养老服务网络', '投资市场'],
+        'mid_role': '综合保险/金融集团',
+        'down': ['个人保险客户', '企业团险客户', '理财/资管客户'],
+        'down_note': '寿险负债端转型推动 NBV 恢复，养老/健康生态圈构建为长期看点'
+    },
+    'Communication Equipment': {
+        'up': ['光芯片 (II-VI/Lumentum)', '高速 DSP (博通/Marvell)', '精密光学元件'],
+        'mid_role': '光通信设备/光模块制造',
+        'down': ['云厂商数据中心 (谷歌/AWS/Meta)', '电信运营商 (5G 建设)', 'AI 算力互联'],
+        'down_note': '800G/1.6T 光模块需求随 AI 集群扩建爆发，硅光技术为下一代方向'
+    },
+    'Electronic Components': {
+        'up': ['精密模具/自动化设备', '金属/塑胶/陶瓷原材料', '电镀/表面处理'],
+        'mid_role': '精密电子零部件制造',
+        'down': ['苹果/华为 (消费电子)', '汽车 Tier 1 (线束/连接器)', '5G 基站设备商'],
+        'down_note': '消费电子精密制造向汽车电子延伸，智能汽车零部件为第二增长曲线'
+    },
 }
 
 def build_chain_html(info, ticker):
-    """构建产业链定位图（基于 HTML Flexbox 与高级样式）"""
-    sector = info.get('sector', '未知板块')
-    industry = info.get('industry', '未知细分行业')
+    """构建产业链定位图：优先按 Ticker 精确匹配，其次按 industry/sector 模糊匹配，无数据时明确提示而非通用描述"""
+    sector = info.get('sector', '')
+    industry = info.get('industry', '')
     name = info.get('shortName', ticker)
-    chain = CHAIN_DB.get(industry, None)
-    is_generic = False
-    if chain is None:
+
+    # 第一优先级：按 Ticker 代码精确查找（不依赖 yfinance 的 industry 字段）
+    tk_clean = ticker.upper().replace('.SS', '.SS').replace('.SZ', '.SZ')
+    chain = TICKER_CHAIN_DB.get(tk_clean, None)
+
+    # 第二优先级：按 industry 精确匹配
+    if chain is None and industry:
+        chain = CHAIN_DB.get(industry, None)
+
+    # 第三优先级：按 industry/sector 模糊匹配
+    if chain is None and (industry or sector):
         for key in CHAIN_DB:
-            if key.lower() in industry.lower() or key.lower() in sector.lower():
+            if (industry and key.lower() in industry.lower()) or (sector and key.lower() in sector.lower()):
                 chain = CHAIN_DB[key]
                 break
+
+    # 无数据时：明确提示，彻底禁止通用占位描述
     if chain is None:
-        is_generic = True
-        chain = {
-            'up': [f'{sector}相关原材料/设备供应商'],
-            'mid_role': f'{name} ({industry})',
-            'down': ['终端客户'],
-            'down_note': '⚠️ 未命中内置产业链数据库，以上为通用行业属性，非本公司专属核实数据。'
-        }
-        
+        industry_display = industry or '未获取到行业信息'
+        return f"""<div style="margin:1.5rem 0; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05);">
+<div style="text-align:center; font-size:1.15rem; font-weight:700; color:#38bdf8; margin-bottom:1rem;">🌐 {name} 产业链生态定位图谱</div>
+<div style="text-align:center; padding:2rem; color:#94a3b8; font-size:0.95rem;">
+<div style="font-size:2rem; margin-bottom:1rem;">📭</div>
+<div style="margin-bottom:0.5rem;">暂无 <b style="color:#38bdf8;">{name} ({ticker})</b> 的专属产业链数据</div>
+<div style="font-size:0.82rem; opacity:0.7;">行业: {industry_display} | 板块: {sector or '未获取'}</div>
+<div style="font-size:0.82rem; opacity:0.6; margin-top:1rem;">本站严格遵循"无专属数据不展示"原则，绝不使用通用描述占位。</div>
+</div>
+</div>"""
+
     up_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['up']])
     down_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['down']])
-    warn_html = '<div style="color:#fbbf24; font-size:0.85rem; text-align:center; margin-bottom:1.5rem; font-weight:500;">⚠️ 未命中内置行业库，以下为通用性推测描述</div>' if is_generic else ''
-    
-    return f"""
-    <div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-      <div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#38bdf8; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
-      {warn_html}
-      <div class="chain-grid">
 
-        <!-- 上游 (Upstream) -->
-        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
-          <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🏭</span> <span>上游 (Upstream)</span></div>
-          <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{up_li}</ul>
-        </div>
-
-        <div class="chain-arrow">➔</div>
-
-        <!-- 中游 (Midstream) -->
-        <div style="background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
-          <div style="font-size:0.95rem; font-weight:700; color:#38bdf8; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
-          <div style="font-size:1.4rem; font-weight:900; color:#ffffff; text-align:center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">{name}</div>
-          <div style="font-size:0.88rem; opacity:0.9; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:6px;">{chain['mid_role']}</div>
-        </div>
-
-        <div class="chain-arrow">➔</div>
-
-        <!-- 下游 (Downstream) -->
-        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
-          <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🛒</span> <span>下游 (Downstream)</span></div>
-          <ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{down_li}</ul>
-        </div>
-
-      </div>
-      <div style="text-align:center; font-size:0.82rem; margin-top:1.8rem; color:#94a3b8; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
-        📌 {chain['down_note']}
-      </div>
-    </div>
-    """
+    return f"""<div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+<div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#38bdf8; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
+<div class="chain-grid">
+<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+<div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🏭</span> <span>上游 (Upstream)</span></div>
+<ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{up_li}</ul>
+</div>
+<div class="chain-arrow">➔</div>
+<div style="background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
+<div style="font-size:0.95rem; font-weight:700; color:#38bdf8; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
+<div style="font-size:1.4rem; font-weight:900; color:#ffffff; text-align:center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">{name}</div>
+<div style="font-size:0.88rem; opacity:0.9; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:6px;">{chain['mid_role']}</div>
+</div>
+<div class="chain-arrow">➔</div>
+<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
+<div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🛒</span> <span>下游 (Downstream)</span></div>
+<ul style="font-size:0.85rem; padding-left:20px; margin:0; line-height:1.6; color:#e2e8f0;">{down_li}</ul>
+</div>
+</div>
+<div style="text-align:center; font-size:0.82rem; margin-top:1.8rem; color:#94a3b8; background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
+📌 {chain['down_note']}
+</div>
+</div>"""
 
 
 def get_stock_profile(ticker_input, info, mapped_name=""):
