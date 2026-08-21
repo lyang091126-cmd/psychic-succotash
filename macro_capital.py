@@ -168,18 +168,18 @@ def fetch_sector_fund_flow():
 
 def render_macro_capital_board():
     with st.expander("🌊 宏观资金面监控室 (Macro Capital Flows)", expanded=True):
-        st.markdown("### 📊 核心宽基 ETF 资金异动监控")
-        st.caption("实时监控核心宽基 ETF 成交额异常放大，捕捉主力/神秘资金大单进场与护盘交易信号。")
+        st.markdown("### 🛡️ 国家队 (中央汇金) 护盘先锋监控")
+        st.caption("实时监控核心宽基 ETF 成交额异常放大及主力资金净流入（大单+超大单差额），捕捉神秘资金进场信号。")
         
         df_etf = fetch_national_team_etfs()
         if not df_etf.empty:
-            # Top metrics for the top 5 ETFs by Turnover
+            # Top metrics for the top 5 ETFs by Turnover (Turnover is still good for Metrics)
             top5 = df_etf.sort_values(by='成交额(亿元)', ascending=False).head(5)
             cols = st.columns(len(top5))
             for i, row in top5.reset_index().iterrows():
                 with cols[i]:
                     chg = row['涨跌幅']
-                    turnover = row['成交额(亿元'] if '成交额(亿元' in row else row.get('成交额(亿元)')
+                    turnover = row['成交额(亿元)']
                     alert = "🔥 异动爆量" if turnover > 30 else ""
                     
                     st.metric(
@@ -191,16 +191,29 @@ def render_macro_capital_board():
             
             st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
             
-            # P6: 柱状图逻辑彻底改回以“成交额 (亿元)”为轴进行排行，恢复高可读性
-            metric_x = '成交额(亿元)'
-            title_suffix = "成交额"
-            hover_data = {
-                '成交额(亿元)': ':.2f',
-                '涨跌幅': ':.2f',
-                '名称': False,
-                '颜色': False
-            }
-            custom_data = ['涨跌幅', '当前价', '成交额(亿元)']
+            # Bar chart for ALL tracked ETFs based on Main Force Net Inflow OR Turnover
+            # Fallback to turnover if Eastmoney net inflow API fails
+            if '主力净流入(亿元)' in df_etf.columns and df_etf['主力净流入(亿元)'].abs().sum() == 0:
+                metric_x = '成交额(亿元)'
+                title_suffix = "成交额"
+                hover_data = {
+                    '成交额(亿元)': ':.2f',
+                    '涨跌幅': ':.2f',
+                    '名称': False,
+                    '颜色': False
+                }
+                custom_data = ['涨跌幅', '当前价', '成交额(亿元)']
+            else:
+                metric_x = '主力净流入(亿元)'
+                title_suffix = "主力资金净流入 (大单+超大单)"
+                hover_data = {
+                    '主力净流入(亿元)': ':.2f',
+                    '成交额(亿元)': ':.2f',
+                    '涨跌幅': ':.2f',
+                    '名称': False,
+                    '颜色': False
+                }
+                custom_data = ['涨跌幅', '当前价', '成交额(亿元)', '主力净流入(亿元)']
 
             df_etf_sorted = df_etf.sort_values(by=metric_x, ascending=True) # Ascending for horizontal bar
             if '涨跌幅' in df_etf_sorted.columns:
@@ -215,14 +228,19 @@ def render_macro_capital_board():
                 orientation='h',
                 color='颜色',
                 color_discrete_map='identity',
-                title=f"📈 核心宽基 ETF {title_suffix} 排行 (亿元)",
+                title=f"📈 核心宽基 ETF {title_suffix} (亿元)",
                 hover_data=hover_data,
                 custom_data=custom_data
             )
             
-            fig_etf.update_traces(
-                hovertemplate="<b>%{y}</b><br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
-            )
+            if metric_x == '主力净流入(亿元)':
+                fig_etf.update_traces(
+                    hovertemplate="<b>%{y}</b><br>主力净流入: %{customdata[3]:.2f}亿<br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
+                )
+            else:
+                fig_etf.update_traces(
+                    hovertemplate="<b>%{y}</b><br>总成交额: %{customdata[2]:.2f}亿<br>涨跌幅: %{customdata[0]:.2f}%<br>现价: %{customdata[1]:.3f}<extra></extra>"
+                )
                 
             fig_etf.update_layout(
                 margin=dict(t=40, l=10, r=10, b=10),
@@ -246,122 +264,62 @@ def render_macro_capital_board():
         
         df_sector = fetch_sector_fund_flow()
         if not df_sector.empty and '行业' in df_sector.columns:
-            # P5: 过滤掉净额绝对值过小的尾部行业，只保留主力核心大行业，避免极小区块挤压字号而无法显示文字
-            df_sector = df_sector.sort_values(by='绝对净流入', ascending=False)
-            df_sector = df_sector[df_sector['绝对净流入'] >= 1.0].head(25)
+            df_sector['板块'] = 'A股全市场'
+            fig_tree = px.treemap(
+                df_sector,
+                path=['板块', '行业'],
+                values='绝对净流入',
+                color='净流入(亿元)',
+                color_continuous_scale=[[0, '#00E676'], [0.5, '#262730'], [1, '#FF4B4B']],
+                color_continuous_midpoint=0,
+                hover_data={
+                    '净流入(亿元)': ':.2f',
+                    '涨跌幅': ':.2f',
+                    '领涨股': True,
+                    '绝对净流入': False,
+                    '板块': False
+                },
+                custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
+            )
             
-            if not df_sector.empty:
-                df_sector['板块'] = 'A股全市场'
-                fig_tree = px.treemap(
-                    df_sector,
-                    path=['板块', '行业'],
-                    values='绝对净流入',
-                    color='净流入(亿元)',
-                    color_continuous_scale=[[0, '#00E676'], [0.5, '#262730'], [1, '#FF4B4B']],
-                    color_continuous_midpoint=0,
-                    hover_data={
-                        '净流入(亿元)': ':.2f',
-                        '涨跌幅': ':.2f',
-                        '领涨股': True,
-                        '绝对净流入': False,
-                        '板块': False
-                    },
-                    custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
+            try:
+                fig_tree.update_traces(
+                    textinfo="label+value+percent parent",
+                    texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
+                    textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
+                    textposition="middle center",
+                    hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
+                    marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
                 )
-                
+            except Exception:
                 try:
                     fig_tree.update_traces(
-                        textinfo="label+value+percent parent",
-                        texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
-                        textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
+                        textinfo="label+value",
+                        textfont=dict(size=26, family="Arial, sans-serif"),
                         textposition="middle center",
-                        hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
                         marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
                     )
                 except Exception:
-                    try:
-                        fig_tree.update_traces(
-                            textinfo="label+value",
-                            textfont=dict(size=26, family="Arial, sans-serif"),
-                            textposition="middle center",
-                            marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
-                        )
-                    except Exception:
-                        pass
-                
-                fig_tree.update_layout(
-                    font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
-                    uniformtext=dict(
-                        minsize=11,  # 设定字号下限为 11px
-                        mode='hide'  # 小于 11px 的微小区块自动隐藏文字，避免拖累大区块
-                    ),
-                    height=650,  # 确保给热力图充裕的垂直空间
-                    margin=dict(l=10, r=10, t=35, b=10),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    coloraxis_colorbar=dict(
-                        title="净流入(亿)",
-                        thicknessmode="pixels", thickness=15,
-                        lenmode="pixels", len=300,
-                        yanchor="top", y=1,
-                        ticks="outside"
-                    )
+                    pass
+            
+            fig_tree.update_layout(
+                font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
+                uniformtext=dict(
+                    minsize=11,  # 设定字号下限为 11px
+                    mode='hide'  # 小于 11px 的微小区块自动隐藏文字，避免拖累大区块
+                ),
+                height=650,  # 确保给热力图充裕的垂直空间
+                margin=dict(l=10, r=10, t=35, b=10),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                coloraxis_colorbar=dict(
+                    title="净流入(亿)",
+                    thicknessmode="pixels", thickness=15,
+                    lenmode="pixels", len=300,
+                    yanchor="top", y=1,
+                    ticks="outside"
                 )
-                st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
-            else:
-                st.warning("当前时段接口维护，资金流数据暂缓更新")
+            )
+            st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
         else:
             st.warning("当前时段接口维护，资金流数据暂缓更新")
-            
-        # P6: 新增：过往 30 天主力资金净流入/流出趋势图
-        st.markdown("---")
-        st.markdown("### 📊 核心宽基 ETF 近 30 日主力资金流向趋势")
-        st.caption("基于每日成交额与价格涨跌幅权重估算的主力资金流入/流出趋势。")
-        
-        etf_choice = st.selectbox("选择要查看趋势的 ETF", ["510300.SS (华泰柏瑞沪深300 ETF)", "588000.SS (华夏科创50 ETF)"])
-        etf_tk = etf_choice.split(" ")[0]
-        
-        try:
-            # 抓取 45 天数据以保证获取 30 个交易日
-            t_etf = yf.Ticker(etf_tk)
-            hist_etf = t_etf.history(period="45d")
-            if not hist_etf.empty and len(hist_etf) >= 2:
-                hist_etf['Prev_Close'] = hist_etf['Close'].shift(1)
-                hist_etf['chg_pct'] = (hist_etf['Close'] - hist_etf['Prev_Close']) / hist_etf['Prev_Close']
-                hist_etf['turnover'] = hist_etf['Close'] * hist_etf['Volume'] / 1e8
-                
-                # 资金流向粗略估算算法
-                hist_etf['net_flow'] = hist_etf['turnover'] * hist_etf['chg_pct'] * 4.0
-                hist_etf['net_flow'] = hist_etf.apply(lambda r: np.clip(r['net_flow'], -0.2 * r['turnover'], 0.2 * r['turnover']), axis=1)
-                hist_etf = hist_etf.dropna().tail(30)
-                
-                df_trend = pd.DataFrame({
-                    '日期': [d.strftime('%m-%d') for d in hist_etf.index],
-                    '净流入(亿元)': hist_etf['net_flow'].values
-                })
-                
-                # 水平线上方红色，水平线下方绿色
-                colors_trend = ['#ef4444' if val >= 0 else '#00b865' for val in df_trend['净流入(亿元)']]
-                
-                fig_trend = go.Figure(go.Bar(
-                    x=df_trend['日期'],
-                    y=df_trend['净流入(亿元)'],
-                    marker_color=colors_trend,
-                    name="估算主力净流入"
-                ))
-                
-                fig_trend.update_layout(
-                    height=280,
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    template='plotly_dark',
-                    xaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="净额 (亿元)")
-                )
-                
-                st.plotly_chart(fig_trend, use_container_width=True, key=f"flow_trend_{etf_tk}")
-            else:
-                st.info("暂无足够的历史日线数据来估算资金流趋势。")
-        except Exception as e:
-            st.info(f"资金流量趋势计算暂缓: {e}")
