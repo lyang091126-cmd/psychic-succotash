@@ -10,7 +10,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
         return
         
     st.markdown("---")
-    st.markdown(f"## 🧮 {ticker} 相对估值与财务预测推演计算器")
+    st.markdown(f"## 🧮 【{ticker}】估值模型及财务推演计算器")
     st.markdown("<div style='font-size:0.85rem; opacity:0.8; margin-bottom:1rem;'>基于同行业估值水平与未来业绩预期，全自动多维推演并展示个股相对合理股价与估值水位差。</div>", unsafe_allow_html=True)
     
     # 提取客观基础财务指标
@@ -99,6 +99,17 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     
     with calc_c1:
         st.write("#### 1. 预测财务指标")
+        
+        # P2: 新增标的选择输入框
+        target_ticker = st.text_input(
+            "选择需要预测的标的代码/简称 (按回车确认)", 
+            value=st.session_state.get('selected_ticker', ticker), 
+            key="crowd_target_ticker_input"
+        )
+        if target_ticker and target_ticker != st.session_state.get('selected_ticker', ticker):
+            st.session_state.selected_ticker = target_ticker
+            st.rerun()
+            
         pred_rev = st.number_input(f"预测营业收入 ({unit_lbl})", min_value=0.0, value=float(def_rev) if def_rev > 0 else 100.0, step=10.0, key="calc_pred_rev")
         pred_net_inc = st.number_input(f"预测净利润 ({unit_lbl})", min_value=0.0, value=float(def_net_inc) if def_net_inc > 0 else 15.0, step=2.0, key="calc_pred_net_inc")
         pred_net_assets = st.number_input(f"预测净资产 ({unit_lbl})", min_value=0.0, value=float(def_net_assets) if def_net_assets > 0 else 60.0, step=5.0, key="calc_pred_net_assets")

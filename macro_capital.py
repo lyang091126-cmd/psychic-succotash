@@ -336,8 +336,14 @@ def render_macro_capital_board():
             # 优先使用 start/end 精准范围拉取 yfinance 数据
             hist_etf = t_etf.history(start=start_date_trend.strftime('%Y-%m-%d'), end=end_date_trend.strftime('%Y-%m-%d'))
             
+            # 立即校验最后一条数据的年份，防严重滞后或滞留旧数据
+            if not hist_etf.empty:
+                last_year = pd.to_datetime(hist_etf.index[-1]).year
+                if last_year < 2026:
+                    hist_etf = pd.DataFrame()
+            
             # 校验：若返回空或索引数据不合理，则降级到更稳定的 A股 ETF 接口
-            if hist_etf.empty or (hist_etf.index[0].year < 2026):
+            if hist_etf.empty:
                 try:
                     df_ak = ak.fund_etf_hist_em(
                         symbol=etf_tk.split('.')[0],
@@ -353,6 +359,12 @@ def render_macro_capital_board():
                             'Close': df_ak['收盘'].astype(float),
                             'Volume': df_ak['成交量'].astype(float)
                         })
+                        
+                        # 再次校验最后一条数据的年份
+                        if not hist_etf.empty:
+                            last_year = pd.to_datetime(hist_etf.index[-1]).year
+                            if last_year < 2026:
+                                hist_etf = pd.DataFrame()
                 except Exception:
                     hist_etf = pd.DataFrame()
             
