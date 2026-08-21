@@ -328,9 +328,40 @@ def render_macro_capital_board():
         etf_tk = etf_choice.split(" ")[0]
         
         try:
-            # 抓取 45 天数据以保证获取 30 个交易日
+            # P1: 强防时间倒退 Bug - 明确限制起止日期并提供 fallback 数据获取机制
             t_etf = yf.Ticker(etf_tk)
-            hist_etf = t_etf.history(period="45d")
+            end_date_trend = datetime.now()
+            start_date_trend = end_date_trend - timedelta(days=45)
+            
+            # 优先使用 start/end 精准范围拉取 yfinance 数据
+            hist_etf = t_etf.history(start=start_date_trend.strftime('%Y-%m-%d'), end=end_date_trend.strftime('%Y-%m-%d'))
+            
+            # 校验：若返回空或索引数据不合理，则降级到更稳定的 A股 ETF 接口
+            if hist_etf.empty or (hist_etf.index[0].year < 2026):
+                try:
+                    df_ak = ak.fund_etf_hist_em(
+                        symbol=etf_tk.split('.')[0],
+                        period="daily",
+                        start_date=start_date_trend.strftime('%Y%m%d'),
+                        end_date=end_date_trend.strftime('%Y%m%d'),
+                        adjust="qfq"
+                    )
+                    if df_ak is not None and not df_ak.empty:
+                        df_ak['Date'] = pd.to_datetime(df_ak['日期'])
+                        df_ak.set_index('Date', inplace=True)
+                        hist_etf = pd.DataFrame({
+                            'Close': df_ak['收盘'].astype(float),
+                            'Volume': df_ak['成交量'].astype(float)
+                        })
+                except Exception:
+                    hist_etf = pd.DataFrame()
+            
+            # 终极数据隔离校验：强制只保留 2026 年以后的今日有效数据，彻底隔离 2008 历史倒退数据
+            if not hist_etf.empty:
+                hist_etf.index = pd.to_datetime(hist_etf.index).tz_localize(None)
+                cutoff_date = datetime(2026, 1, 1)
+                hist_etf = hist_etf[hist_etf.index >= cutoff_date]
+
             if not hist_etf.empty and len(hist_etf) >= 2:
                 hist_etf['Prev_Close'] = hist_etf['Close'].shift(1)
                 hist_etf['chg_pct'] = (hist_etf['Close'] - hist_etf['Prev_Close']) / hist_etf['Prev_Close']

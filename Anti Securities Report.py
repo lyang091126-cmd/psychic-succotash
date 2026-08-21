@@ -13,6 +13,7 @@ from openai import OpenAI
 
 # 初始化全局变量，防止 "name 'all_data' is not defined" 报错
 all_data = {}
+api_key_input = st.session_state.get("api_key_state", "")
 
 st.set_page_config(
     page_title="Anti Stock Report - 智能投研终端",
@@ -94,9 +95,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 提前创建宏观资金与众包推演的顶部显示占位容器 (P1 模块重排 - 还原 V4 顺序)
-container_macro = st.container()
-container_crowd = st.container()
+# 模块按自上而下顺序直接渲染 (Task 2 Layout 重构)
 
 # -------------------------------------------------------------------
 # 0. 智能股票名称/中文映射解析引擎
@@ -616,12 +615,31 @@ for j, s in enumerate(display_stocks):
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
-# --- 4.3 设置行（物理对称级对齐，还原 V4 并加底端对齐） ---
+# --- 4.3 全市场实时盘口 (快讯) ---
+try:
+    from market_tape import get_market_tape_ui
+    get_market_tape_ui(api_key_input)
+except Exception as e:
+    st.error(f"加载实时盘口失败: {e}")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# --- 4.4 宏观资金面监控室 ---
+try:
+    from macro_capital import render_macro_capital_board
+    render_macro_capital_board()
+except Exception as e:
+    st.warning("当前时段接口维护，资金流数据暂缓更新")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# --- 4.5 设置行（从宏观切入微观的过渡，物理对称级对齐） ---
 set_c1, set_c2, set_c3 = st.columns([3, 2, 2], vertical_alignment="bottom")
 with set_c1:
     user_ticker_raw = st.text_input("代码 / 简称 (例如 AAPL, 600519.SS)", value=st.session_state.selected_ticker)
 with set_c2:
-    api_key_input = st.text_input("API 密钥 (必填)", value="", type="password")
+    api_key_input_val = st.text_input("API 密钥 (必填)", value=api_key_input, type="password", key="api_key_state")
+    api_key_input = api_key_input_val
 with set_c3:
     generate_btn = st.button("🚀 生成研报", key="btn_main_generate", use_container_width=True)
 
@@ -635,23 +653,6 @@ if ticker_input:
         st.error(f"数据采集失败: {e}")
 
 risk_preference = "稳健型"
-
-# 填充宏观资金容器 (还原 V4 顶部展示)
-with container_macro:
-    try:
-        from macro_capital import render_macro_capital_board
-        render_macro_capital_board()
-    except Exception as e:
-        st.warning("当前时段接口维护，资金流数据暂缓更新")
-
-# 填充众包预测容器 (还原 V4 顶部展示)
-with container_crowd:
-    try:
-        from crowdsource_agent import get_crowdsource_ui
-        tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
-        get_crowdsource_ui(api_key_input, tk_for_crowd, all_data)
-    except Exception as e:
-        st.error(f"众包预测组件加载失败: {e}")
 
 
 def fmt_price_val(val, currency=""):
@@ -2074,10 +2075,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         kline_fig.update_layout(height=480)
                         st.plotly_chart(kline_fig, use_container_width=True)
 
-            # =====================================================================
-            # Tab 2：财报与估值穿透 —— 估值分位数进度条 + 2x2 KPI + 财务核心数据表
-            # （此前这些内容被误挂在 tab1 下，导致切到 tab2 时页面只剩一张雷达图，其余"消失"）
-            # =====================================================================
+
+
             with tab2:
                 st.markdown("---")
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:0.6rem;">📊 【{s_title_name}】 财报与估值穿透</div>', unsafe_allow_html=True)
@@ -2358,16 +2357,15 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     if not found_negative:
                         st.markdown('<div class="news-neutral"><div class="news-title">暂未识别到明确负面性质事件</div></div>', unsafe_allow_html=True)
 
+    # --- 4.6 众包财务预测 (Crowdsourcing) 与相对估值计算器 (UGC Forecasts) ---
+    st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+    try:
+        from crowdsource_agent import get_crowdsource_ui
+        tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
+        get_crowdsource_ui(api_key_input, tk_for_crowd, all_data)
+    except Exception as e:
+        st.error(f"众包预测组件加载失败: {e}")
+
     st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
     st.markdown("---")
     st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
-
-# 提前创建快讯显示的底端占位容器并填充 (P1 模块重排)
-container_tape = st.container()
-with container_tape:
-    st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-    try:
-        from market_tape import get_market_tape_ui
-        get_market_tape_ui(api_key_input)
-    except Exception as e:
-        st.error(f"加载实时盘口失败: {e}")
