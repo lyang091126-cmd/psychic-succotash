@@ -4,9 +4,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import akshare as ak
-from datetime import datetime
+from datetime import datetime, timedelta
 import concurrent.futures
 import requests
+import plotly.graph_objects as go
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_national_team_etfs():
@@ -101,7 +102,7 @@ def fetch_national_team_etfs():
             
     df = pd.DataFrame(results)
     if not df.empty:
-        df = df.sort_values(by='主力净流入(亿元)', ascending=False)
+        df = df.sort_values(by='成交额(亿元)', ascending=False)
     return df
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -252,6 +253,10 @@ def render_macro_capital_board():
             
             if not df_sector.empty:
                 df_sector['板块'] = 'A股全市场'
+                
+                # P1: 字体颜色规则: 净流入>=0 (红底) 用白字，净流入<0 (绿底) 用黑字
+                df_sector['font_color'] = df_sector['净流入(亿元)'].apply(lambda x: '#ffffff' if x >= 0 else '#000000')
+                
                 fig_tree = px.treemap(
                     df_sector,
                     path=['板块', '行业'],
@@ -266,13 +271,13 @@ def render_macro_capital_board():
                         '绝对净流入': False,
                         '板块': False
                     },
-                    custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
+                    custom_data=['净流入(亿元)', '涨跌幅', '领涨股', 'font_color']
                 )
                 
                 try:
                     fig_tree.update_traces(
                         textinfo="label+value+percent parent",
-                        texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
+                        texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%</span>",
                         textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
                         textposition="middle center",
                         hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
@@ -282,6 +287,7 @@ def render_macro_capital_board():
                     try:
                         fig_tree.update_traces(
                             textinfo="label+value",
+                            texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿</span>",
                             textfont=dict(size=26, family="Arial, sans-serif"),
                             textposition="middle center",
                             marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
@@ -365,3 +371,136 @@ def render_macro_capital_board():
                 st.info("暂无足够的历史日线数据来估算资金流趋势。")
         except Exception as e:
             st.info(f"资金流量趋势计算暂缓: {e}")
+
+        # --- 新增: CFFEX 股指期货席位多空持仓变动监测 ---
+        st.markdown("---")
+        st.markdown("### 📊 CFFEX 股指期货主力席位持仓异动监控")
+        st.caption("实时监控中金所股指期货主力席位的大单多空增减仓数据，透视头部主力机构席位买卖动向。")
+        
+        # 1. 自动获取最近一个交易日的股指期货数据
+        cffex_date, cffex_data = None, {}
+        try:
+            # 引入 fallback 逻辑，向后检索最近 7 天数据
+            for offset in range(7):
+                t_date = (datetime.now() - timedelta(days=offset)).strftime("%Y%m%d")
+                try:
+                    res_dict = ak.get_cffex_rank_table(date=t_date)
+                    if res_dict:
+                        valid = False
+                        for k, df in res_dict.items():
+                            if isinstance(df, pd.DataFrame) and not df.empty:
+                                valid = True
+                                break
+                        if valid:
+                            cffex_date = t_date
+                            cffex_data = res_dict
+                            break
+                except Exception:
+                    pass
+        except Exception as e:
+            st.info(f"股指期货数据获取暂缓: {e}")
+
+        if cffex_date and cffex_data:
+            # 格式化日期显示
+            fmt_date = f"{cffex_date[:4]}-{cffex_date[4:6]}-{cffex_date[6:8]}"
+            st.markdown(f"<div style='font-size:0.85rem; color:#94a3b8; margin-bottom:10px;'>最新数据日期: <b>{fmt_date}</b> (中金所每日盘后大单持仓数据)</div>", unsafe_allow_html=True)
+            
+            # 品种选择
+            f_prod = st.radio("选择股指期货品种", ["IF (沪深300期货)", "IC (中证500期货)", "IM (中证1000期货)", "IH (上证50期货)"], horizontal=True)
+            prod_prefix = f_prod.split(" ")[0]
+            
+            # 获取该品种的所有合约
+            contracts = sorted([k for k in cffex_data.keys() if k.startswith(prod_prefix)])
+            if contracts:
+                # 寻找主力合约（持仓量最大的合约）
+                active_contract = contracts[0]
+                max_vol = -1
+                for c in contracts:
+                    df_c = cffex_data[c]
+                    if 'long_open_interest' in df_c.columns:
+                        total_hold = df_c['long_open_interest'].sum()
+                        if total_hold > max_vol:
+                            max_vol = total_hold
+                            active_contract = c
+                
+                selected_contract = st.selectbox("选择具体合约", contracts, index=contracts.index(active_contract))
+                
+                df_contract = cffex_data[selected_contract]
+                
+                # 开始解析增减仓
+                # 过滤并清洗多单数据
+                df_long = df_contract.dropna(subset=['long_party_name', 'long_open_interest_chg'])
+                df_long = df_long[df_long['long_party_name'].str.strip() != '']
+                # 按绝对值变动大小降序排序，取前 10
+                df_long_top = df_long.sort_values(by='long_open_interest_chg', key=abs, ascending=False).head(10)
+                
+                # 过滤并清洗空单数据
+                df_short = df_contract.dropna(subset=['short_party_name', 'short_open_interest_chg'])
+                df_short = df_short[df_short['short_party_name'].str.strip() != '']
+                # 按绝对值变动大小降序排序，取前 10
+                df_short_top = df_short.sort_values(by='short_open_interest_chg', key=abs, ascending=False).head(10)
+                
+                c_c1, c_c2 = st.columns(2)
+                
+                # CSS style for tables
+                st.markdown("""
+                <style>
+                .futures-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.82rem;
+                    margin-top: 10px;
+                    background-color: rgba(10, 15, 30, 0.4);
+                    border-radius: 8px;
+                    overflow: hidden;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }
+                .futures-table th {
+                    background-color: rgba(255, 255, 255, 0.05);
+                    padding: 8px 10px;
+                    text-align: left;
+                    color: #94a3b8;
+                    font-weight: 600;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                }
+                .futures-table td {
+                    padding: 8px 10px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+                    color: #ffffff;
+                }
+                .chg-red {
+                    color: #ef4444 !important;
+                    font-weight: bold;
+                }
+                .chg-green {
+                    color: #00b865 !important;
+                    font-weight: bold;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                with c_c1:
+                    st.markdown("#### 🐂 多单主力席位今日增减持 Top10")
+                    html_long = "<table class='futures-table'><tr><th>名次</th><th>多单席位</th><th>今日增减</th><th>多单持仓(手)</th></tr>"
+                    for idx, row in df_long_top.reset_index().iterrows():
+                        chg_val = int(row['long_open_interest_chg'])
+                        chg_str = f"+{chg_val}" if chg_val >= 0 else f"{chg_val}"
+                        chg_class = "chg-red" if chg_val >= 0 else "chg-green" # 多单增加是利多(红)，减少是利空(绿)
+                        html_long += f"<tr><td>{idx+1}</td><td>{row['long_party_name']}</td><td class='{chg_class}'>{chg_str}</td><td>{int(row['long_open_interest'])}</td></tr>"
+                    html_long += "</table>"
+                    st.markdown(html_long, unsafe_allow_html=True)
+                    
+                with c_c2:
+                    st.markdown("#### 🐻 空单主力席位今日增减持 Top10")
+                    html_short = "<table class='futures-table'><tr><th>名次</th><th>空单席位</th><th>今日增减</th><th>空单持仓(手)</th></tr>"
+                    for idx, row in df_short_top.reset_index().iterrows():
+                        chg_val = int(row['short_open_interest_chg'])
+                        chg_str = f"+{chg_val}" if chg_val >= 0 else f"{chg_val}"
+                        chg_class = "chg-green" if chg_val >= 0 else "chg-red" # 空单增加是利空(绿)，减少是利多(红)
+                        html_short += f"<tr><td>{idx+1}</td><td>{row['short_party_name']}</td><td class='{chg_class}'>{chg_str}</td><td>{int(row['short_open_interest'])}</td></tr>"
+                    html_short += "</table>"
+                    st.markdown(html_short, unsafe_allow_html=True)
+            else:
+                st.info("未获取到当前合约的分席位持仓数据。")
+        else:
+            st.warning("暂无股指期货主力席位持仓变动数据。")
