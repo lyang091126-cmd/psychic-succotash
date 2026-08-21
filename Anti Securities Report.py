@@ -94,9 +94,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 提前创建宏观资金与众包推演的顶部显示占位容器 (P1 模块重排)
-container_macro = st.container()
+# 提前创建页面布局容器，严格控制整个屏幕组件自上而下的渲染顺序 (P7 & P1 & P4)
+container_inputs = st.container()
 container_crowd = st.container()
+container_tape = st.container()
+container_macro = st.container()
 
 # -------------------------------------------------------------------
 # 0. 智能股票名称/中文映射解析引擎
@@ -617,43 +619,50 @@ for j, s in enumerate(display_stocks):
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
 # --- 4.3 设置行（物理对称级对齐） ---
-set_c1, set_c2, set_c3 = st.columns([3, 2, 2])
-with set_c1:
-    user_ticker_raw = st.text_input("代码 / 简称 (例如 AAPL, 600519.SS)", value=st.session_state.selected_ticker)
-with set_c2:
-    api_key_input = st.text_input("API 密钥 (必填)", value="", type="password")
-with set_c3:
-    st.markdown("<br>", unsafe_allow_html=True)
-    generate_btn = st.button("🚀 生成研报", key="btn_main_generate", use_container_width=True)
+with container_inputs:
+    set_c1, set_c2, set_c3 = st.columns([3, 2, 2], vertical_alignment="bottom")
+    with set_c1:
+        user_ticker_raw = st.text_input("代码 / 简称 (例如 AAPL, 600519.SS)", value=st.session_state.selected_ticker)
+    with set_c2:
+        api_key_input = st.text_input("API 密钥 (必填)", value="", type="password")
+    with set_c3:
+        generate_btn = st.button("🚀 生成研报", key="btn_main_generate", use_container_width=True)
+
+# Resolve ticker and fetch all_data immediately so it is available for containers
+ticker_input, mapped_name = resolve_ticker(user_ticker_raw)
+if ticker_input:
+    try:
+        with st.spinner(f"正在采集 {ticker_input} 全量多源数据..."):
+            all_data = fetch_all_data(ticker_input)
+    except Exception as e:
+        st.error(f"数据采集失败: {e}")
 
 risk_preference = "稳健型"
 
+# 填充众包预测容器 (P7 & P1 顺序重排：众包移至此处)
+with container_crowd:
+    try:
+        from crowdsource_agent import get_crowdsource_ui
+        tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
+        get_crowdsource_ui(api_key_input, tk_for_crowd, all_data)
+    except Exception as e:
+        st.error(f"众包预测组件加载失败: {e}")
 
-# --- 4.4 宏观资金面监控室 ---
-try:
-    from macro_capital import render_macro_capital_board
-    render_macro_capital_board()
-except Exception as e:
-    st.error(f"宏观资金面监控室加载失败: {e}")
+# 填充快讯容器 (P7 & P1 顺序重排：快讯移至此处)
+with container_tape:
+    try:
+        from market_tape import get_market_tape_ui
+        get_market_tape_ui(api_key_input)
+    except Exception as e:
+        st.error(f"加载实时盘口失败: {e}")
 
-st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-
-# --- 4.45 众包财务预测 (Crowdsourcing) 与相对估值计算器 ---
-try:
-    from crowdsource_agent import get_crowdsource_ui
-    tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
-    get_crowdsource_ui(api_key_input, tk_for_crowd, all_data)
-except Exception as e:
-    st.error(f"众包预测组件加载失败: {e}")
-
-st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-
-# --- 4.5 全市场实时盘口 (财联社全球快讯) ---
-try:
-    from market_tape import get_market_tape_ui
-    get_market_tape_ui(api_key_input)
-except Exception as e:
-    st.error(f"加载实时盘口失败: {e}")
+# 填充宏观资金容器 (P7 & P1 顺序重排：宏观资金移至此处)
+with container_macro:
+    try:
+        from macro_capital import render_macro_capital_board
+        render_macro_capital_board()
+    except Exception as e:
+        st.warning("当前时段接口维护，资金流数据暂缓更新")
 
 
 def fmt_price_val(val, currency=""):
@@ -2364,12 +2373,4 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
     st.markdown("---")
     st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
 
-# 提前创建快讯显示的底端占位容器并填充 (P1 模块重排)
-container_tape = st.container()
-with container_tape:
-    st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
-    try:
-        from market_tape import get_market_tape_ui
-        get_market_tape_ui(api_key_input)
-    except Exception as e:
-        st.error(f"加载实时盘口失败: {e}")
+# 研报生成详细信息默认在此主脚本流后部渲染 (P7 & P1 顺序重排：标的详情与研报生成区)
