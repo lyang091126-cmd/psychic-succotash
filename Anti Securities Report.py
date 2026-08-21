@@ -581,16 +581,7 @@ with set_c3:
 risk_preference = "稳健型"
 
 
-# --- 4.4 【新增】全市场实时盘口 (大盘口) ---
-try:
-    from market_tape import get_market_tape_ui
-    get_market_tape_ui(api_key_input)
-except Exception as e:
-    st.error(f"加载实时盘口失败: {e}")
-
-st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
-
-# --- 4.45 宏观资金面监控室 ---
+# --- 4.4 宏观资金面监控室 ---
 try:
     from macro_capital import render_macro_capital_board
     render_macro_capital_board()
@@ -599,13 +590,22 @@ except Exception as e:
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
-# --- 4.5 众包财务预测 (Crowdsourcing) ---
+# --- 4.45 众包财务预测 (Crowdsourcing) 与相对估值计算器 ---
 try:
     from crowdsource_agent import get_crowdsource_ui
     tk_for_crowd, _ = resolve_ticker(user_ticker_raw)
-    get_crowdsource_ui(api_key_input, tk_for_crowd)
+    get_crowdsource_ui(api_key_input, tk_for_crowd, all_data)
 except Exception as e:
     st.error(f"众包预测组件加载失败: {e}")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# --- 4.5 全市场实时盘口 (财联社全球快讯) ---
+try:
+    from market_tape import get_market_tape_ui
+    get_market_tape_ui(api_key_input)
+except Exception as e:
+    st.error(f"加载实时盘口失败: {e}")
 
 
 def fmt_price_val(val, currency=""):

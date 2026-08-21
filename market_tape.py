@@ -7,71 +7,68 @@ from openai import OpenAI
 
 CACHE_FILE = "cailianshe_news_cache.json"
 
-def load_cached_news():
+def load_news_cache():
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
-            pass
+        except Exception: pass
     return []
+
+def save_news_cache(news_list):
+    # 过滤掉超过 72 小时 (3天) 的旧新闻
+    now = datetime.datetime.now()
+    valid_news = []
+    for item in news_list:
+        try:
+            item_time = datetime.datetime.strptime(item['time_str'], "%Y-%m-%d %H:%M:%S")
+            if (now - item_time).total_seconds() <= 3600 * 72:
+                valid_news.append(item)
+        except Exception:
+            valid_news.append(item) # 解析失败暂保留
+
+    # 按照时间倒序排序
+    valid_news.sort(key=lambda x: x.get('time_str', ''), reverse=True)
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(valid_news, f, ensure_ascii=False, indent=2)
+    return valid_news
 
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_cls_news():
     """Fetch new cls news and update the local JSON cache."""
+    cache = load_news_cache()
+    
+    fetched_list = []
     try:
         df_news = ak.stock_info_global_cls()
-    except Exception as e:
-        # If fetch fails, we just return whatever is in the cache
-        return load_cached_news()
-    
-    if df_news.empty:
-        return load_cached_news()
-        
-    # Process fetched news
-    fetched_list = df_news.to_dict('records')
-    
-    # Load existing cache
-    history = load_cached_news()
-    
-    # Deduplicate and Append
-    # Key: 发布日期 + 发布时间 + 标题
-    existing_keys = set()
-    for item in history:
-        key = f"{item.get('发布日期', '')}_{item.get('发布时间', '')}_{item.get('标题', '')}"
-        existing_keys.add(key)
-        
-    for item in fetched_list:
-        key = f"{item.get('发布日期', '')}_{item.get('发布时间', '')}_{item.get('标题', '')}"
-        if key not in existing_keys:
-            history.append(item)
-            existing_keys.add(key)
-            
-    # Prune (keep only last 72 hours)
-    now = datetime.datetime.now()
-    pruned_history = []
-    for item in history:
-        date_str = item.get('发布日期')
-        time_str = item.get('发布时间')
-        try:
-            if date_str and time_str:
-                dt_str = f"{date_str} {time_str}"
-                dt_obj = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                if (now - dt_obj).total_seconds() <= 72 * 3600:
-                    pruned_history.append(item)
-            else:
-                pruned_history.append(item) # Keep if can't parse
-        except:
-            pruned_history.append(item)
-            
-    # Save back to JSON
-    try:
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(pruned_history, f, ensure_ascii=False, indent=2)
-    except Exception as e:
+        if df_news is not None and not df_news.empty:
+            for _, row in df_news.iterrows():
+                item = {}
+                for k, v in row.to_dict().items():
+                    item[k] = v
+                
+                # Convert to string to avoid serialization issues
+                date_val = item.get('发布日期')
+                time_val = item.get('发布时间')
+                d_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val or '')
+                t_str = time_val.strftime('%H:%M:%S') if hasattr(time_val, 'strftime') else str(time_val or '')
+                item['发布日期'] = d_str
+                item['发布时间'] = t_str
+                item['time_str'] = f"{d_str} {t_str}".strip()
+                fetched_list.append(item)
+    except Exception:
         pass
         
-    return pruned_history
+    if not fetched_list:
+        return cache
+        
+    # Deduplicate and merge by time_str + 标题 + 内容
+    merged = {f"{item.get('time_str')}_{item.get('标题')}_{item.get('内容')[:20]}": item for item in cache}
+    for item in fetched_list:
+        key = f"{item.get('time_str')}_{item.get('标题')}_{item.get('内容')[:20]}"
+        merged[key] = item
+        
+    return save_news_cache(list(merged.values()))
 
 def classify_news(title, content):
     text = (str(title) + " " + str(content)).lower()

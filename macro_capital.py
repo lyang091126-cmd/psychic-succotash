@@ -22,44 +22,73 @@ def fetch_national_team_etfs():
         '512000.SS': '华宝券商ETF', '512800.SS': '华宝银行ETF'
     }
     
-    def get_etf(tk, name):
-        try:
-            # yfinance fetch for standard OHLCV
-            t = yf.Ticker(tk)
-            hist = t.history(period='2d')
-            if len(hist) >= 1:
-                current_price = float(hist['Close'].iloc[-1])
-                prev_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
-                volume = float(hist['Volume'].iloc[-1])
-                
-                chg_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0
-                turnover_100m = (current_price * volume) / 100000000 # 亿元
-                
-                # Eastmoney fetch for Main Force Net Inflow (主力净流入)
-                code = tk.split('.')[0]
-                secid = f"1.{code}" if tk.endswith('.SS') else f"0.{code}"
-                url = f"http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f137"
-                net_inflow_100m = 0.0
-                try:
-                    r = requests.get(url, timeout=2).json()
-                    if r and 'data' in r and r['data']:
-                        f137 = r['data'].get('f137')
-                        if f137 and f137 != '-':
-                            net_inflow_100m = float(f137) / 100000000.0
-                except Exception:
-                    pass
-                
-                if turnover_100m > 0:
-                    return {
-                        '代码': tk,
-                        '名称': name,
-                        '当前价': current_price,
-                        '涨跌幅': chg_pct,
-                        '成交额(亿元)': turnover_100m,
-                        '主力净流入(亿元)': net_inflow_100m
+    # 优先使用 akshare 获取实时行情 (EM 接口)
+    ak_data = {}
+    try:
+        df_spot = ak.fund_etf_spot_em()
+        if df_spot is not None and not df_spot.empty:
+            for _, row in df_spot.iterrows():
+                code = str(row.get('代码', ''))
+                if code:
+                    ak_data[code] = {
+                        'current_price': float(row.get('最新价', 0)) if row.get('最新价') is not None else 0.0,
+                        'chg_pct': float(row.get('涨跌幅', 0)) if row.get('涨跌幅') is not None else 0.0,
+                        'turnover_100m': float(row.get('成交额', 0)) / 1e8 if row.get('成交额') else 0.0
                     }
-        except Exception:
-            pass
+    except Exception:
+        pass
+
+    def get_etf(tk, name):
+        code = tk.split('.')[0]
+        current_price = None
+        chg_pct = None
+        turnover_100m = None
+
+        # 优先从 akshare 提取
+        if code in ak_data:
+            current_price = ak_data[code]['current_price']
+            chg_pct = ak_data[code]['chg_pct']
+            turnover_100m = ak_data[code]['turnover_100m']
+
+        # 如果 akshare 数据缺失，或者为0/NaN，降级使用 yfinance
+        if current_price is None or pd.isna(current_price) or current_price == 0:
+            try:
+                t = yf.Ticker(tk)
+                hist = t.history(period='5d')
+                if len(hist) >= 1:
+                    current_price = float(hist['Close'].iloc[-1])
+                    if len(hist) >= 2:
+                        prev_close = float(hist['Close'].iloc[-2])
+                        chg_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0.0
+                    else:
+                        chg_pct = 0.0
+                    volume = float(hist['Volume'].iloc[-1])
+                    turnover_100m = (current_price * volume) / 1e8
+            except Exception:
+                pass
+
+        if current_price is not None and not pd.isna(current_price):
+            # 获取主力净流入 (通过东财接口)
+            secid = f"1.{code}" if tk.endswith('.SS') else f"0.{code}"
+            url = f"http://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f137"
+            net_inflow_100m = 0.0
+            try:
+                r = requests.get(url, timeout=2).json()
+                if r and 'data' in r and r['data']:
+                    f137 = r['data'].get('f137')
+                    if f137 and f137 != '-':
+                        net_inflow_100m = float(f137) / 100000000.0
+            except Exception:
+                pass
+
+            return {
+                '代码': tk,
+                '名称': name,
+                '当前价': current_price,
+                '涨跌幅': chg_pct if chg_pct is not None else 0.0,
+                '成交额(亿元)': turnover_100m if turnover_100m is not None else 0.0,
+                '主力净流入(亿元)': net_inflow_100m
+            }
         return None
 
     results = []
@@ -84,13 +113,22 @@ def fetch_sector_fund_flow():
             if isinstance(val, str):
                 val = val.replace('亿', '').replace('万', '').strip()
                 try: return float(val)
-                except: return 0
-            return float(val) if pd.notnull(val) else 0
-        if '净额' in df.columns:
-            df['净流入(亿元)'] = df['净额'].apply(parse_amount)
-            df['绝对净流入'] = df['净流入(亿元)'].abs()
+                except: return 0.0
+            return float(val) if pd.notnull(val) else 0.0
+        if df is not None and not df.empty:
+            if '净额' in df.columns:
+                df['净流入(亿元)'] = df['净额'].apply(parse_amount)
+                # 强制对净额进行四舍五入并处理异常值
+                df['净流入(亿元)'] = df['净流入(亿元)'].apply(lambda x: round(float(x), 2) if pd.notnull(x) else 0.0)
+                df['绝对净流入'] = df['净流入(亿元)'].abs()
+            else:
+                df['净流入(亿元)'] = 0.0
+                df['绝对净流入'] = 0.0
+                
             if '行业-涨跌幅' in df.columns:
-                df['涨跌幅'] = df['行业-涨跌幅'].astype(str).str.replace('%', '').astype(float)
+                # 强制对涨幅进行清洗和四舍五入
+                df['涨跌幅'] = df['行业-涨跌幅'].astype(str).str.replace('%', '').str.strip()
+                df['涨跌幅'] = df['涨跌幅'].apply(lambda x: round(float(x), 2) if (pd.notnull(x) and x != '?' and x != 'nan' and x != '') else 0.0)
             else:
                 df['涨跌幅'] = 0.0
             return df
@@ -217,19 +255,19 @@ def render_macro_capital_board():
             try:
                 fig_tree.update_traces(
                     textinfo="label+value+percent parent",
-                    texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:+.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
-                    textfont=dict(size=24, family="sans-serif"),  # 将大区块字号基准提升至 24px 加粗
+                    texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
+                    textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
                     textposition="middle center",
                     hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
-                    marker=dict(cornerradius=6, pad=dict(t=3, l=3, r=3, b=3), line=dict(color='#0A0D14', width=2))
+                    marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
                 )
             except Exception:
                 try:
                     fig_tree.update_traces(
                         textinfo="label+value",
-                        textfont=dict(size=24, family="sans-serif"),
+                        textfont=dict(size=26, family="Arial, sans-serif"),
                         textposition="middle center",
-                        marker=dict(cornerradius=6, pad=dict(t=3, l=3, r=3, b=3), line=dict(color='#0A0D14', width=2))
+                        marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
                     )
                 except Exception:
                     pass
@@ -237,8 +275,8 @@ def render_macro_capital_board():
             fig_tree.update_layout(
                 font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
                 uniformtext=dict(
-                    minsize=13,  # 设定字号下限为 13px
-                    mode='hide'  # 小于 13px 的微小区块自动隐藏文字，避免拖累大区块
+                    minsize=11,  # 设定字号下限为 11px
+                    mode='hide'  # 小于 11px 的微小区块自动隐藏文字，避免拖累大区块
                 ),
                 height=650,  # 确保给热力图充裕的垂直空间
                 margin=dict(l=10, r=10, t=35, b=10),
