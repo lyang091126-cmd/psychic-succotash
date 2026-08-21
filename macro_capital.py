@@ -241,84 +241,6 @@ def render_macro_capital_board():
         else:
             st.warning("暂无 ETF 数据")
             
-        st.markdown("---")
-        st.markdown("### 🗺️ 全市场行业主力资金净流入热力图 (Treemap)")
-        st.caption("方块大小代表资金活跃度(净额绝对值)，红色代表净流入，绿色代表净流出。点击可下钻或悬停查看详情。")
-        
-        df_sector = fetch_sector_fund_flow()
-        if not df_sector.empty and '行业' in df_sector.columns:
-            # P5: 过滤掉净额绝对值过小的尾部行业，只保留主力核心大行业，避免极小区块挤压字号而无法显示文字
-            df_sector = df_sector.sort_values(by='绝对净流入', ascending=False)
-            df_sector = df_sector[df_sector['绝对净流入'] >= 1.0].head(25)
-            
-            if not df_sector.empty:
-                df_sector['板块'] = 'A股全市场'
-                
-                # P1: 字体颜色规则: 净流入>=0 (红底) 用白字，净流入<0 (绿底) 用黑字
-                df_sector['font_color'] = df_sector['净流入(亿元)'].apply(lambda x: '#ffffff' if x >= 0 else '#000000')
-                
-                fig_tree = px.treemap(
-                    df_sector,
-                    path=['板块', '行业'],
-                    values='绝对净流入',
-                    color='净流入(亿元)',
-                    color_continuous_scale=[[0, '#00E676'], [0.5, '#262730'], [1, '#FF4B4B']],
-                    color_continuous_midpoint=0,
-                    hover_data={
-                        '净流入(亿元)': ':.2f',
-                        '涨跌幅': ':.2f',
-                        '领涨股': True,
-                        '绝对净流入': False,
-                        '板块': False
-                    },
-                    custom_data=['净流入(亿元)', '涨跌幅', '领涨股', 'font_color']
-                )
-                
-                try:
-                    fig_tree.update_traces(
-                        textinfo="label+value+percent parent",
-                        texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%</span>",
-                        textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
-                        textposition="middle center",
-                        hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
-                        marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
-                    )
-                except Exception:
-                    try:
-                        fig_tree.update_traces(
-                            textinfo="label+value",
-                            texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿</span>",
-                            textfont=dict(size=26, family="Arial, sans-serif"),
-                            textposition="middle center",
-                            marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
-                        )
-                    except Exception:
-                        pass
-                
-                fig_tree.update_layout(
-                    font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
-                    uniformtext=dict(
-                        minsize=11,  # 设定字号下限为 11px
-                        mode='hide'  # 小于 11px 的微小区块自动隐藏文字，避免拖累大区块
-                    ),
-                    height=650,  # 确保给热力图充裕的垂直空间
-                    margin=dict(l=10, r=10, t=35, b=10),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    coloraxis_colorbar=dict(
-                        title="净流入(亿)",
-                        thicknessmode="pixels", thickness=15,
-                        lenmode="pixels", len=300,
-                        yanchor="top", y=1,
-                        ticks="outside"
-                    )
-                )
-                st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
-            else:
-                st.warning("当前时段接口维护，资金流数据暂缓更新")
-        else:
-            st.warning("当前时段接口维护，资金流数据暂缓更新")
-            
         # P6: 新增：过往 30 天主力资金净流入/流出趋势图
         st.markdown("---")
         st.markdown("### 📊 核心宽基 ETF 近 30 日主力资金流向趋势")
@@ -414,6 +336,84 @@ def render_macro_capital_board():
                 st.info("暂无足够的历史日线数据来估算资金流趋势。")
         except Exception as e:
             st.info(f"资金流量趋势计算暂缓: {e}")
+
+        st.markdown("---")
+        st.markdown("### 🗺️ 全市场行业主力资金净流入热力图 (Treemap)")
+        st.caption("方块大小代表资金活跃度(净额绝对值)，红色代表净流入，绿色代表净流出。点击可下钻或悬停查看详情。")
+        
+        df_sector = fetch_sector_fund_flow()
+        if not df_sector.empty and '行业' in df_sector.columns:
+            # P5: 过滤掉净额绝对值过小的尾部行业，只保留主力核心大行业，避免极小区块挤压字号而无法显示文字
+            df_sector = df_sector.sort_values(by='绝对净流入', ascending=False)
+            df_sector = df_sector[df_sector['绝对净流入'] >= 1.0].head(25)
+            
+            if not df_sector.empty:
+                df_sector['板块'] = 'A股全市场'
+                
+                # P1: 字体颜色规则: 净流入>=0 (红底) 用白字，净流入<0 (绿底) 用黑字
+                df_sector['font_color'] = df_sector['净流入(亿元)'].apply(lambda x: '#ffffff' if x >= 0 else '#000000')
+                
+                fig_tree = px.treemap(
+                    df_sector,
+                    path=['板块', '行业'],
+                    values='绝对净流入',
+                    color='净流入(亿元)',
+                    color_continuous_scale=[[0, '#00E676'], [0.5, '#262730'], [1, '#FF4B4B']],
+                    color_continuous_midpoint=0,
+                    hover_data={
+                        '净流入(亿元)': ':.2f',
+                        '涨跌幅': ':.2f',
+                        '领涨股': True,
+                        '绝对净流入': False,
+                        '板块': False
+                    },
+                    custom_data=['净流入(亿元)', '涨跌幅', '领涨股', 'font_color']
+                )
+                
+                try:
+                    fig_tree.update_traces(
+                        textinfo="label+value+percent parent",
+                        texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:+.2f}%</span>",
+                        textfont=dict(size=26, family="Arial, sans-serif"),  # 将大区块字号基准拉高至 26px
+                        textposition="middle center",
+                        hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
+                        marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
+                    )
+                except Exception:
+                    try:
+                        fig_tree.update_traces(
+                            textinfo="label+value",
+                            texttemplate="<span style='color:%{customdata[3]}'><b>%{label}</b><br>净额: %{customdata[0]:.2f}亿</span>",
+                            textfont=dict(size=26, family="Arial, sans-serif"),
+                            textposition="middle center",
+                            marker=dict(cornerradius=4, pad=dict(t=2, l=2, r=2, b=2), line=dict(color='#0A0D14', width=2))
+                        )
+                    except Exception:
+                        pass
+                
+                fig_tree.update_layout(
+                    font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
+                    uniformtext=dict(
+                        minsize=11,  # 设定字号下限为 11px
+                        mode='hide'  # 小于 11px 的微小区块自动隐藏文字，避免拖累大区块
+                    ),
+                    height=650,  # 确保给热力图充裕的垂直空间
+                    margin=dict(l=10, r=10, t=35, b=10),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    coloraxis_colorbar=dict(
+                        title="净流入(亿)",
+                        thicknessmode="pixels", thickness=15,
+                        lenmode="pixels", len=300,
+                        yanchor="top", y=1,
+                        ticks="outside"
+                    )
+                )
+                st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
+            else:
+                st.warning("当前时段接口维护，资金流数据暂缓更新")
+        else:
+            st.warning("当前时段接口维护，资金流数据暂缓更新")
 
         # --- 新增: CFFEX 股指期货席位多空持仓变动监测 ---
         st.markdown("---")
