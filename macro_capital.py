@@ -107,6 +107,37 @@ def fetch_national_team_etfs():
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_sector_fund_flow():
     """Fetch real-time sector fund flow from akshare"""
+    # 优先采用官方 JSON 数据接口，防网页 DOM 变化导致 HTML 解析崩溃 (P2 & P1)
+    try:
+        df = ak.stock_sector_fund_flow_rank(indicator="今日")
+        if df is not None and not df.empty:
+            df = df.rename(columns={
+                '名称': '行业',
+                '今日主力净流入-净额': '净流入(亿元)',
+                '今日涨跌幅': '涨跌幅',
+            })
+            if '净流入(亿元)' in df.columns:
+                df['净流入(亿元)'] = df['净流入(亿元)'].apply(lambda x: round(float(x) / 1e8, 2) if pd.notnull(x) else 0.0)
+            else:
+                net_col = [c for c in df.columns if '主力净流入-净额' in c or '净流入' in c]
+                if net_col:
+                    df['净流入(亿元)'] = df[net_col[0]].apply(lambda x: round(float(x) / 1e8, 2) if pd.notnull(x) else 0.0)
+                else:
+                    df['净流入(亿元)'] = 0.0
+            
+            chg_col = [c for c in df.columns if '涨跌幅' in c or '涨跌' in c]
+            if chg_col:
+                df['涨跌幅'] = df[chg_col[0]].apply(lambda x: round(float(str(x).replace('%', '').strip()), 2) if (pd.notnull(x) and str(x).strip() != '?') else 0.0)
+            else:
+                df['涨跌幅'] = 0.0
+
+            df['绝对净流入'] = df['净流入(亿元)'].abs()
+            df['领涨股'] = df.get('今日领涨股票', 'N/A')
+            return df
+    except Exception:
+        pass
+
+    # 备用降级逻辑 1
     try:
         df = ak.stock_fund_flow_industry(symbol='即时')
         def parse_amount(val):
@@ -118,7 +149,6 @@ def fetch_sector_fund_flow():
         if df is not None and not df.empty:
             if '净额' in df.columns:
                 df['净流入(亿元)'] = df['净额'].apply(parse_amount)
-                # 强制对净额进行四舍五入并处理异常值
                 df['净流入(亿元)'] = df['净流入(亿元)'].apply(lambda x: round(float(x), 2) if pd.notnull(x) else 0.0)
                 df['绝对净流入'] = df['净流入(亿元)'].abs()
             else:
@@ -126,14 +156,14 @@ def fetch_sector_fund_flow():
                 df['绝对净流入'] = 0.0
                 
             if '行业-涨跌幅' in df.columns:
-                # 强制对涨幅进行清洗和四舍五入
                 df['涨跌幅'] = df['行业-涨跌幅'].astype(str).str.replace('%', '').str.strip()
                 df['涨跌幅'] = df['涨跌幅'].apply(lambda x: round(float(x), 2) if (pd.notnull(x) and x != '?' and x != 'nan' and x != '') else 0.0)
             else:
                 df['涨跌幅'] = 0.0
             return df
-    except Exception as e:
-        st.error(f"行业资金流向获取失败: {e}")
+    except Exception:
+        pass
+
     return pd.DataFrame()
 
 def render_macro_capital_board():
@@ -292,4 +322,4 @@ def render_macro_capital_board():
             )
             st.plotly_chart(fig_tree, use_container_width=True, key="macro_treemap")
         else:
-            st.info("当前时段暂无行业资金流向数据。")
+            st.warning("当前时段接口维护，资金流数据暂缓更新")

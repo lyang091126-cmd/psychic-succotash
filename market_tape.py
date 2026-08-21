@@ -5,7 +5,7 @@ import os
 import streamlit as st
 from openai import OpenAI
 
-CACHE_FILE = "cailianshe_news_cache.json"
+CACHE_FILE = "news_cache.json"
 
 def load_news_cache():
     if os.path.exists(CACHE_FILE):
@@ -29,45 +29,143 @@ def save_news_cache(news_list):
 
     # 按照时间倒序排序
     valid_news.sort(key=lambda x: x.get('time_str', ''), reverse=True)
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(valid_news, f, ensure_ascii=False, indent=2)
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(valid_news, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
     return valid_news
 
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_cls_news():
-    """Fetch new cls news and update the local JSON cache."""
+    """Fetch new news from multiple sources (Cailianshe, THS, Baidu) and update news_cache.json."""
     cache = load_news_cache()
-    
     fetched_list = []
+    
+    # 1. 尝试抓取 ak.news_economic_cailianshe() (财联社学术)
     try:
-        df_news = ak.stock_info_global_cls()
-        if df_news is not None and not df_news.empty:
-            for _, row in df_news.iterrows():
-                item = {}
-                for k, v in row.to_dict().items():
-                    item[k] = v
-                
-                # Convert to string to avoid serialization issues
+        if hasattr(ak, 'news_economic_cailianshe'):
+            df1 = ak.news_economic_cailianshe()
+            if df1 is not None and not df1.empty:
+                for _, row in df1.iterrows():
+                    item = row.to_dict()
+                    dt_val = item.get('发布时间') or item.get('datetime')
+                    d_str = datetime.date.today().strftime('%Y-%m-%d')
+                    t_str = "00:00:00"
+                    if dt_val:
+                        dt_str = str(dt_val)
+                        if len(dt_str) >= 19:
+                            d_str, t_str = dt_str[:10], dt_str[11:19]
+                    
+                    title = item.get('标题') or item.get('title') or item.get('内容', '')[:30]
+                    content = item.get('内容') or item.get('content') or title
+                    if title:
+                        fetched_list.append({
+                            '标题': title,
+                            '内容': content,
+                            '发布日期': d_str,
+                            '发布时间': t_str,
+                            'time_str': f"{d_str} {t_str}".strip(),
+                            'source': 'CLS-Economic'
+                        })
+    except Exception:
+        pass
+        
+    # 2. 尝试抓取 ak.stock_info_global_news() (同花顺/全球资讯)
+    try:
+        if hasattr(ak, 'stock_info_global_news'):
+            df2 = ak.stock_info_global_news()
+            if df2 is not None and not df2.empty:
+                for _, row in df2.iterrows():
+                    item = row.to_dict()
+                    dt_val = item.get('发布时间') or item.get('datetime')
+                    d_str = datetime.date.today().strftime('%Y-%m-%d')
+                    t_str = "00:00:00"
+                    if dt_val:
+                        dt_str = str(dt_val)
+                        if len(dt_str) >= 19:
+                            d_str, t_str = dt_str[:10], dt_str[11:19]
+                    
+                    title = item.get('标题') or item.get('title') or item.get('内容', '')[:30]
+                    content = item.get('内容') or item.get('content') or title
+                    if title:
+                        fetched_list.append({
+                            '标题': title,
+                            '内容': content,
+                            '发布日期': d_str,
+                            '发布时间': t_str,
+                            'time_str': f"{d_str} {t_str}".strip(),
+                            'source': 'THS-Global'
+                        })
+    except Exception:
+        pass
+
+    # 3. 始终抓取已存在的 ak.stock_info_global_cls() 作为高可靠兜底/核心源
+    try:
+        df3 = ak.stock_info_global_cls()
+        if df3 is not None and not df3.empty:
+            for _, row in df3.iterrows():
+                item = row.to_dict()
                 date_val = item.get('发布日期')
                 time_val = item.get('发布时间')
                 d_str = date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val or '')
                 t_str = time_val.strftime('%H:%M:%S') if hasattr(time_val, 'strftime') else str(time_val or '')
-                item['发布日期'] = d_str
-                item['发布时间'] = t_str
-                item['time_str'] = f"{d_str} {t_str}".strip()
-                fetched_list.append(item)
+                
+                title = item.get('标题') or item.get('内容', '')[:30]
+                content = item.get('内容') or item.get('标题', '')
+                if title:
+                    fetched_list.append({
+                        '标题': title,
+                        '内容': content,
+                        '发布日期': d_str,
+                        '发布时间': t_str,
+                        'time_str': f"{d_str} {t_str}".strip(),
+                        'source': 'CLS'
+                    })
     except Exception:
         pass
-        
+
+    # 4. 尝试抓取百度财经新闻作为辅助源
+    try:
+        if hasattr(ak, 'news_economic_baidu'):
+            df4 = ak.news_economic_baidu()
+            if df4 is not None and not df4.empty:
+                for _, row in df4.iterrows():
+                    item = row.to_dict()
+                    dt_val = item.get('发布时间') or item.get('datetime')
+                    d_str = datetime.date.today().strftime('%Y-%m-%d')
+                    t_str = "00:00:00"
+                    if dt_val:
+                        dt_str = str(dt_val)
+                        if len(dt_str) >= 19:
+                            d_str, t_str = dt_str[:10], dt_str[11:19]
+                    
+                    title = item.get('标题') or item.get('title')
+                    content = item.get('内容') or item.get('content') or title
+                    if title:
+                        fetched_list.append({
+                            '标题': title,
+                            '内容': content,
+                            '发布日期': d_str,
+                            '发布时间': t_str,
+                            'time_str': f"{d_str} {t_str}".strip(),
+                            'source': 'Baidu'
+                        })
+    except Exception:
+        pass
+
     if not fetched_list:
         return cache
-        
-    # Deduplicate and merge by time_str + 标题 + 内容
-    merged = {f"{item.get('time_str')}_{item.get('标题')}_{item.get('内容')[:20]}": item for item in cache}
+
+    # 按 title/标题 字段去重合并
+    merged = {item.get('标题', ''): item for item in cache if item.get('标题')}
     for item in fetched_list:
-        key = f"{item.get('time_str')}_{item.get('标题')}_{item.get('内容')[:20]}"
-        merged[key] = item
-        
+        title = item.get('标题', '')
+        if title:
+            # 只有当新获取的新闻不存在，或者新获取的新闻时间更新时，才更新缓存
+            if title not in merged or item.get('time_str', '') > merged[title].get('time_str', ''):
+                merged[title] = item
+
     return save_news_cache(list(merged.values()))
 
 def classify_news(title, content):

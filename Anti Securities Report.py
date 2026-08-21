@@ -11,6 +11,9 @@ import math
 from plotly.subplots import make_subplots
 from openai import OpenAI
 
+# 初始化全局变量，防止 "name 'all_data' is not defined" 报错
+all_data = {}
+
 st.set_page_config(
     page_title="Anti Stock Report - 智能投研终端",
     layout="wide",
@@ -42,8 +45,58 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         margin-bottom: 1.5rem;
     }
+    
+    /* P4 & P5 Alignment & Financial Cards CSS injection */
+    div[data-testid="stColumn"] > div > div[data-testid="stButton"] { margin-top: 27px !important; }
+    
+    .financial-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+        margin-bottom: 20px;
+    }
+    .fin-card {
+        background: #0A0D14 !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
+    }
+    .fin-label {
+        font-size: 0.85rem !important;
+        color: #94a3b8 !important;
+        margin-bottom: 5px !important;
+        font-weight: 500 !important;
+    }
+    .fin-value {
+        font-size: 1.35rem !important;
+        font-weight: 800 !important;
+        color: #ffffff !important;
+    }
+    .fin-trend {
+        font-size: 0.8rem !important;
+        margin-top: 5px !important;
+        font-weight: 600 !important;
+    }
+    .trend-up {
+        color: #ef4444 !important;
+    }
+    .trend-down {
+        color: #00b865 !important;
+    }
+    .trend-neutral {
+        color: #94a3b8 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# 提前创建宏观资金与众包推演的顶部显示占位容器 (P1 模块重排)
+container_macro = st.container()
+container_crowd = st.container()
 
 # -------------------------------------------------------------------
 # 0. 智能股票名称/中文映射解析引擎
@@ -526,10 +579,9 @@ for i, (region, rdata) in enumerate(global_markets.items()):
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
-# --- 4.2 热门标的选择（标的名与 Candlestick K线缩略图上下严格一对一对应） ---
+# --- 4.2 热门标的选择 ---
 st.markdown("### 🔥 热门标的快速选择 <span style='font-size:0.78rem; opacity:0.6;'>(按实时成交量排序)</span>", unsafe_allow_html=True)
 
-# 使用 session_state 记录用户选择的热门标的
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "NVDA"
 
@@ -541,8 +593,6 @@ for j, s in enumerate(display_stocks):
         if st.button(btn_label, key=f"hot_btn_{j}", use_container_width=True):
             st.session_state.selected_ticker = s['ticker']
             st.rerun()
-
-        # Candlestick K 线阴阳缩略图直接渲染在对应按钮正下方
         ohlc = s.get('ohlc', {})
         if ohlc and len(ohlc.get('close', [])) >= 2:
             fig_spk = go.Figure(go.Candlestick(
@@ -551,8 +601,6 @@ for j, s in enumerate(display_stocks):
                 low=ohlc['low'],
                 close=ohlc['close'],
                 increasing_line_color='#00b865',
-                decreasing_line_color='#ef4444',
-                increasing_fillcolor='#00b865',
                 decreasing_fillcolor='#ef4444'
             ))
             fig_spk.update_layout(
@@ -680,6 +728,11 @@ def fetch_all_data(ticker_input):
         data['earnings_dates'] = None
     try:
         data['institutional_holders'] = stock.institutional_holders
+        # P6 Fallback strategies
+        if data['institutional_holders'] is None or data['institutional_holders'].empty:
+            data['institutional_holders'] = stock.major_holders
+        if data['institutional_holders'] is None or data['institutional_holders'].empty:
+            data['institutional_holders'] = stock.mutualfund_holders
     except Exception:
         data['institutional_holders'] = None
     try:
@@ -698,6 +751,26 @@ def fetch_all_data(ticker_input):
         data['income_stmt'] = stock.income_stmt
     except Exception:
         data['income_stmt'] = None
+
+    # P7: 获取季度与年度现金流量表
+    try:
+        data['quarterly_cashflow'] = stock.quarterly_cashflow
+    except Exception:
+        data['quarterly_cashflow'] = None
+    try:
+        data['cashflow'] = stock.cashflow
+    except Exception:
+        data['cashflow'] = None
+
+    # P7: 获取季度与年度资产负债表
+    try:
+        data['quarterly_balance_sheet'] = stock.quarterly_balance_sheet
+    except Exception:
+        data['quarterly_balance_sheet'] = None
+    try:
+        data['balance_sheet'] = stock.balance_sheet
+    except Exception:
+        data['balance_sheet'] = None
 
     # 获取公司业务概要（longBusinessSummary）
     if not data['info'].get('longBusinessSummary'):
@@ -1434,34 +1507,63 @@ def build_chain_html(info, ticker):
 </div>"""
 
 
-def get_stock_profile(ticker_input, info, mapped_name=""):
+def get_stock_profile(ticker_input, info, mapped_name="", institutional_holders_df=None):
     """根据输入的股票代码/名称，获取真实的机构持仓等客观数据；无法获取真实数据时明确留空，不编造模板占位数字"""
     s_name = mapped_name or info.get('shortName') or ticker_input
     pure_code = ticker_input.replace('.SS', '').replace('.SZ', '')
+    is_a_share = ticker_input.endswith('.SS') or ticker_input.endswith('.SZ') or pure_code.isdigit()
 
     inst_names, inst_shares = [], []
-    try:
-        import akshare as ak
-        df_holder = ak.stock_circulate_stock_holder(symbol=pure_code)
-        if df_holder is not None and not df_holder.empty:
-            df_holder = df_holder.head(8)
-            names, shares = [], []
-            for _, row in df_holder.iterrows():
-                holder_name = str(row.get('股东名称', row.iloc[3]))
-                share_pct = row.get('占总流通股本比例', row.iloc[5])
-                try:
-                    share_pct = float(share_pct)
-                except Exception:
-                    continue
-                if "自然人" not in holder_name and len(holder_name) > 2:
-                    names.append(holder_name[:12] + ".." if len(holder_name) > 12 else holder_name)
-                    shares.append(round(share_pct, 2))
-                if len(names) == 5:
-                    break
-            if len(names) >= 3:
-                inst_names, inst_shares = names, shares
-    except Exception:
-        pass
+    if is_a_share:
+        try:
+            import akshare as ak
+            df_holder = ak.stock_circulate_stock_holder(symbol=pure_code)
+            if df_holder is not None and not df_holder.empty:
+                df_holder = df_holder.head(8)
+                names, shares = [], []
+                for _, row in df_holder.iterrows():
+                    holder_name = str(row.get('股东名称', row.iloc[3]))
+                    share_pct = row.get('占总流通股本比例', row.iloc[5])
+                    try:
+                        share_pct = float(share_pct)
+                    except Exception:
+                        continue
+                    if "自然人" not in holder_name and len(holder_name) > 2:
+                        names.append(holder_name[:12] + ".." if len(holder_name) > 12 else holder_name)
+                        shares.append(round(share_pct, 2))
+                    if len(names) == 5:
+                        break
+                if len(names) >= 3:
+                    inst_names, inst_shares = names, shares
+        except Exception:
+            pass
+    else:
+        # 美股/港股: 使用 yfinance 传过来的 institutional_holders_df (P6)
+        if institutional_holders_df is not None and not institutional_holders_df.empty:
+            try:
+                cols = list(institutional_holders_df.columns)
+                holder_col = next((c for c in cols if 'Holder' in str(c) or '机构' in str(c)), cols[0])
+                pct_col = next((c for c in cols if '% Out' in str(c) or 'pct' in str(c).lower() or '比例' in str(c)), None)
+                
+                names, shares = [], []
+                for _, row in institutional_holders_df.head(8).iterrows():
+                    h_name = str(row[holder_col])
+                    if pct_col:
+                        h_pct = float(row[pct_col]) * 100 if float(row[pct_col]) <= 1.0 else float(row[pct_col])
+                    else:
+                        total_sh = info.get('sharesOutstanding')
+                        sh_col = next((c for c in cols if 'Shares' in str(c)), None)
+                        if sh_col and total_sh:
+                            h_pct = (float(row[sh_col]) / total_sh) * 100
+                        else:
+                            h_pct = 0.0
+                            
+                    names.append(h_name[:15] + ".." if len(h_name) > 15 else h_name)
+                    shares.append(round(h_pct, 2))
+                if len(names) >= 1:
+                    inst_names, inst_shares = names, shares
+            except Exception:
+                pass
 
     profile = {
         'display_name': s_name,
@@ -1703,7 +1805,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
     if True:
 
             # ===== 提前获取股票 Profile（真实机构持仓数据，无编造） =====
-            st_prof = get_stock_profile(ticker_input, info, mapped_name)
+            st_prof = get_stock_profile(ticker_input, info, mapped_name, all_data.get('institutional_holders'))
             s_title_name = st_prof['display_name']
 
             targets = all_data.get('analyst_targets', {})
@@ -2073,18 +2175,85 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     np_trend = f"{(np_now-np_prev)/abs(np_prev)*100:+.1f}% QoQ"
 
                 st.markdown(f"#### 财务核心数据 <span style='font-size:0.75rem; opacity:0.6;'>数据来源: yfinance | 最新季度: {report_quarter}</span>", unsafe_allow_html=True)
-                st.markdown(f"""
-                | 财务指标 | 最新季度实际值 | 环比/同比趋势 |
-                | :--- | :---: | :---: |
-                | **营业收入 (Revenue)** | {fnum(rev_now, money=True)} | {rev_trend} |
-                | **净利润 (Net Profit)** | {fnum(np_now, money=True)} | {np_trend} |
-                | **毛利率 (Gross Margin)** | {fnum(gross_margin, pct=True)} | — |
-                | **净利率 (Net Margin)** | {fnum(net_margin, pct=True)} | — |
-                | **ROE (净资产收益率)** | {fnum(roe, pct=True)} | — |
-                | **负债权益比** | {fnum(debt_ratio)} | — |
-                | **自由现金流 (FCF)** | {fnum(fcf, money=True)} | — |
-                """)
-                st.caption("⚠️ 字段若显示 N/A 代表源未能获取真实数据，严禁编造。")
+                
+                # P7 扩展指标解析
+                rd_now = rd_prev = None
+                if qf is not None and not qf.empty and 'Research And Development' in qf.index:
+                    rd_now = qf.loc['Research And Development'].iloc[0]
+                    if len(qf.columns) > 1: rd_prev = qf.loc['Research And Development'].iloc[1]
+                elif qf is not None and not qf.empty and 'ResearchAndDevelopment' in qf.index:
+                    rd_now = qf.loc['ResearchAndDevelopment'].iloc[0]
+                    if len(qf.columns) > 1: rd_prev = qf.loc['ResearchAndDevelopment'].iloc[1]
+
+                op_inc_now = op_inc_prev = None
+                if qf is not None and not qf.empty and 'Operating Income' in qf.index:
+                    op_inc_now = qf.loc['Operating Income'].iloc[0]
+                    if len(qf.columns) > 1: op_inc_prev = qf.loc['Operating Income'].iloc[1]
+                elif qf is not None and not qf.empty and 'OperatingIncome' in qf.index:
+                    op_inc_now = qf.loc['OperatingIncome'].iloc[0]
+                    if len(qf.columns) > 1: op_inc_prev = qf.loc['OperatingIncome'].iloc[1]
+
+                qcf = all_data.get('quarterly_cashflow')
+                op_cf_now = op_cf_prev = None
+                if qcf is not None and not qcf.empty and 'Operating Cash Flow' in qcf.index:
+                    op_cf_now = qcf.loc['Operating Cash Flow'].iloc[0]
+                    if len(qcf.columns) > 1: op_cf_prev = qcf.loc['Operating Cash Flow'].iloc[1]
+                elif qcf is not None and not qcf.empty and 'OperatingCashFlow' in qcf.index:
+                    op_cf_now = qcf.loc['OperatingCashFlow'].iloc[0]
+                    if len(qcf.columns) > 1: op_cf_prev = qcf.loc['OperatingCashFlow'].iloc[1]
+
+                qbs = all_data.get('quarterly_balance_sheet')
+                debt_to_assets = None
+                if qbs is not None and not qbs.empty:
+                    try:
+                        total_assets = None
+                        for k in ['Total Assets', 'TotalAssets']:
+                            if k in qbs.index:
+                                total_assets = qbs.loc[k].iloc[0]
+                                break
+                        total_debt = None
+                        for k in ['Total Debt', 'TotalDebt', 'Total Liabilities Net Minor Interest', 'TotalLiabilitiesNetMinorInterest']:
+                            if k in qbs.index:
+                                total_debt = qbs.loc[k].iloc[0]
+                                break
+                        if total_assets and total_debt:
+                            debt_to_assets = total_debt / total_assets
+                    except Exception:
+                        pass
+
+                def fmt_trend(now_val, prev_val):
+                    if isinstance(now_val, (int, float)) and isinstance(prev_val, (int, float)) and prev_val != 0:
+                        chg = (now_val - prev_val) / abs(prev_val) * 100
+                        cls = "trend-up" if chg >= 0 else "trend-down"
+                        return f'<span class="{cls}">{chg:+.1f}% QoQ</span>'
+                    return '<span class="trend-neutral">—</span>'
+
+                def make_card(label, value_str, trend_html):
+                    return f"""
+                    <div class="fin-card">
+                        <div class="fin-label">{label}</div>
+                        <div class="fin-value">{value_str}</div>
+                        <div class="fin-trend">{trend_html}</div>
+                    </div>
+                    """
+
+                cards_html = f"""
+                <div class="financial-grid">
+                    {make_card("📊 营业收入 (Revenue)", fnum(rev_now, money=True), fmt_trend(rev_now, rev_prev))}
+                    {make_card("💵 净利润 (Net Income)", fnum(np_now, money=True), fmt_trend(np_now, np_prev))}
+                    {make_card("🏢 营业利润 (Operating Income)", fnum(op_inc_now, money=True), fmt_trend(op_inc_now, op_inc_prev))}
+                    {make_card("🔬 研发投入 (R&D)", fnum(rd_now, money=True), fmt_trend(rd_now, rd_prev))}
+                    {make_card("💸 经营性现金流 (Op Cashflow)", fnum(op_cf_now, money=True), fmt_trend(op_cf_now, op_cf_prev))}
+                    {make_card("🌊 自由现金流 (FCF)", fnum(fcf, money=True), '<span class="trend-neutral">—</span>')}
+                    {make_card("📈 毛利率 (Gross Margin)", fnum(gross_margin, pct=True), '<span class="trend-neutral">—</span>')}
+                    {make_card("📊 净利率 (Net Margin)", fnum(net_margin, pct=True), '<span class="trend-neutral">—</span>')}
+                    {make_card("🧬 ROE (净资产收益率)", fnum(roe, pct=True), '<span class="trend-neutral">—</span>')}
+                    {make_card("🛡️ 资产负债率 (Debt to Assets)", fnum(debt_to_assets, pct=True), '<span class="trend-neutral">—</span>')}
+                    {make_card("⚖️ 负债权益比 (Debt to Equity)", fnum(debt_ratio), '<span class="trend-neutral">—</span>')}
+                </div>
+                """
+                st.markdown(cards_html, unsafe_allow_html=True)
+                st.caption("📌 双向/客观财报指标展示系统，N/A 表示接口未返回对应披露项。")
 
             # =====================================================================
             # Tab 3：机构与资金追踪 —— 十大流通股东持仓（此前误挂在tab1）+ 机构调研记录
@@ -2114,9 +2283,41 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown("---")
                 st.markdown("#### 🔎 机构调研记录")
                 if all_data.get('is_a_share'):
-                    st.info("⚠️ 东方财富数据接口 (akshare) 当前在本服务器环境遭遇网络错误 (DNS) 或参数变更限制，无法自动拉取该标的近90日专属机构调研记录。本站严格遵守客观陈述底线，绝不在此编造测试数据占位。")
+                    try:
+                        import akshare as ak
+                        pure_code = ticker_input.replace('.SS', '').replace('.SZ', '')
+                        # P6: 强制调用东方财富调研记录，支持 TypeError 降级
+                        try:
+                            df_jgdy = ak.stock_jgdy_detail_em(symbol=pure_code)
+                        except TypeError:
+                            start_date = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime('%Y%m%d')
+                            df_all = ak.stock_jgdy_tj_em(date=start_date)
+                            code_col = next((c for c in df_all.columns if '代码' in c or 'code' in c.lower()), None)
+                            if code_col and not df_all.empty:
+                                df_jgdy = df_all[df_all[code_col].astype(str).str.contains(pure_code)]
+                            else:
+                                df_jgdy = pd.DataFrame()
+                        except Exception:
+                            df_jgdy = pd.DataFrame()
+
+                        if df_jgdy is not None and not df_jgdy.empty:
+                            col_date = next((c for c in df_jgdy.columns if '日期' in c or '时间' in c or 'date' in c.lower()), None)
+                            col_org = next((c for c in df_jgdy.columns if '机构' in c or '对象' in c or '接待' in c or 'org' in c.lower()), None)
+                            col_people = next((c for c in df_jgdy.columns if '人员' in c or '调研人' in c or 'people' in c.lower()), None)
+                            
+                            df_display = pd.DataFrame()
+                            df_display['调研日期'] = df_jgdy[col_date].astype(str) if col_date else df_jgdy.iloc[:, 0].astype(str)
+                            df_display['调研机构'] = df_jgdy[col_org].astype(str) if col_org else "详见公告"
+                            df_display['调研人员'] = df_jgdy[col_people].astype(str) if col_people else "详见公告"
+                            
+                            st.dataframe(df_display.head(50), use_container_width=True)
+                            st.caption("📌 数据来源：akshare (东方财富机构调研数据)")
+                        else:
+                            st.info("ℹ️ 该标的近90日暂无公开披露的机构调研记录。")
+                    except Exception as e:
+                        st.info(f"⚠️ 无法获取机构调研数据: {e}")
                 else:
-                    st.info("ℹ️ 机构调研及增减持记录为 A 股监管强制披露类别，港股/美股无完全对应开源接口，此项不适用于当前标的。")
+                    st.info("ℹ️ 机构调研记录为 A 股监管强制披露类别，港股/美股无完全对应开源接口，此项不适用于当前标的。")
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
             # =====================================================================
@@ -2162,3 +2363,13 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
     st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
     st.markdown("---")
     st.caption("⚠️ 免责声明：本工具仅做公开数据的客观聚合与可视化展示，所有内容（包括AI生成的摘要文字）均不构成、也不应被理解为投资建议、评级或目标价推荐。投资有风险，请独立判断并自行承担决策后果。\n")
+
+# 提前创建快讯显示的底端占位容器并填充 (P1 模块重排)
+container_tape = st.container()
+with container_tape:
+    st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
+    try:
+        from market_tape import get_market_tape_ui
+        get_market_tape_ui(api_key_input)
+    except Exception as e:
+        st.error(f"加载实时盘口失败: {e}")
