@@ -30,8 +30,48 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 注入全局 UI 优化 CSS
+# 注入全局 UI 优化 CSS 与前端全套防盗/防右键/防 F12 保护网
 st.markdown("""
+<style>
+*, body, html {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+}
+</style>
+
+<script>
+// 1. 禁用右键菜单 (Context Menu)
+document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+    return false;
+}, false);
+
+// 2. 禁用开发者工具与查看源码快捷键 (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U, Ctrl+S)
+document.addEventListener('keydown', function(e) {
+    if (
+        e.keyCode === 123 || 
+        (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) ||
+        (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83)) ||
+        (e.metaKey && e.altKey && (e.keyCode === 73 || e.keyCode === 74))
+    ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }
+}, false);
+
+// 3. 动态 debugger 陷阱，拦截 Console 调谐
+setInterval(function() {
+    (function(a) {
+        return (function(a) {
+            return (Function('debugger')());
+        })(a);
+    })();
+}, 1000);
+</script>
+
 <style>
     /* 增加主容器的两侧边距，避免贴边，同时增加上下呼吸感 */
     .block-container {
@@ -1793,12 +1833,12 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("最新股价/涨跌", f"{price}", f"{chg_pct}%", delta_color="normal" if chg_pct >= 0 else "inverse")
-        m2.metric("Trailing PE / Forward PE",
-                   f"{pe_ttm:.2f}" if isinstance(pe_ttm, (int, float)) else "N/A",
-                   f"{fwd_pe:.2f} Fwd" if isinstance(fwd_pe, (int, float)) else None,
+        m2.metric("滚动市盈率 / 预测市盈率",
+                   f"{pe_ttm:.2f}" if isinstance(pe_ttm, (int, float)) else "暂无",
+                   f"预测 {fwd_pe:.2f}" if isinstance(fwd_pe, (int, float)) else None,
                    delta_color="off")
         m3.metric("机构持仓比例",
-                   f"{inst_pct*100:.2f}%" if isinstance(inst_pct, (int, float)) else "N/A",
+                   f"{inst_pct*100:.2f}%" if isinstance(inst_pct, (int, float)) else "暂无",
                    delta_color="off")
         m4.metric("52周区间位置", range_pos_str,
                    help="当前价格在52周最高/最低价之间的相对位置，纯统计事实，不代表风险等级、买卖信号或任何投资建议")
@@ -1807,7 +1847,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
     st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
-    st.markdown("### 📊 Executive Summary")
+    st.markdown("### 📊 标的综合摘要")
     exec_c1, exec_c2 = st.columns([2, 3])
 
     if True:
@@ -1827,19 +1867,19 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 target_range_str = f"{fmt_price_val(low_p, currency)} ~ {fmt_price_val(high_p, currency)}"
 
             # ===== 差异化功能2：五维雷达图评分计算（仅计算一次，全站只渲染一次，避免重复图表） =====
-            radar_scores = {'估值 (Valuation)': 50, '成长 (Growth)': 50, '动能 (Momentum)': 50, '盈利 (Profitability)': 50, '健康 (Health)': 50}
+            radar_scores = {'估值': 50, '成长': 50, '动能': 50, '盈利': 50, '财务健康': 50}
             try:
                 pe = info.get('trailingPE', 0)
-                if pe and pe > 0: radar_scores['估值 (Valuation)'] = max(10, min(100, 100 - (pe - 10) * 1.5))
+                if pe and pe > 0: radar_scores['估值'] = max(10, min(100, 100 - (pe - 10) * 1.5))
                 rev_g = info.get('revenueGrowth', 0)
-                if rev_g: radar_scores['成长 (Growth)'] = max(10, min(100, 50 + rev_g * 100))
+                if rev_g: radar_scores['成长'] = max(10, min(100, 50 + rev_g * 100))
                 recent_close = all_data['hist_1y']['Close'].iloc[-1] if not all_data['hist_1y'].empty else 0
                 pct_1y = ((recent_close - all_data['hist_1y']['Close'].iloc[0]) / all_data['hist_1y']['Close'].iloc[0]) * 100 if not all_data['hist_1y'].empty else 0
-                radar_scores['动能 (Momentum)'] = max(10, min(100, 50 + pct_1y))
+                radar_scores['动能'] = max(10, min(100, 50 + pct_1y))
                 roe = info.get('returnOnEquity', 0)
-                if roe: radar_scores['盈利 (Profitability)'] = max(10, min(100, 30 + roe * 200))
+                if roe: radar_scores['盈利'] = max(10, min(100, 30 + roe * 200))
                 debt = info.get('debtToEquity', 0)
-                if debt: radar_scores['健康 (Health)'] = max(10, min(100, 100 - debt / 2))
+                if debt: radar_scores['财务健康'] = max(10, min(100, 100 - debt / 2))
             except Exception:
                 pass
 
@@ -1867,11 +1907,11 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown('<span class="badge-neutral">基于真实财务与行情指标映射的五维归一化解构</span>', unsafe_allow_html=True)
                 st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
 
-                val_score = radar_scores.get('估值 (Valuation)', 50)
-                gro_score = radar_scores.get('成长 (Growth)', 50)
-                mom_score = radar_scores.get('动能 (Momentum)', 50)
-                pro_score = radar_scores.get('盈利 (Profitability)', 50)
-                hea_score = radar_scores.get('健康 (Health)', 50)
+                val_score = radar_scores.get('估值', 50)
+                gro_score = radar_scores.get('成长', 50)
+                mom_score = radar_scores.get('动能', 50)
+                pro_score = radar_scores.get('盈利', 50)
+                hea_score = radar_scores.get('财务健康', 50)
 
                 val_status = "估值偏高" if val_score < 40 else ("估值合理" if val_score <= 70 else "估值吸引力高")
                 gro_status = "成长放缓" if gro_score < 40 else ("稳健成长" if gro_score <= 70 else "强劲高增")
@@ -1880,11 +1920,11 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 hea_status = "财务偏紧" if hea_score < 40 else ("财务稳健" if hea_score <= 70 else "极佳杠杆")
 
                 st.markdown(f"""
-                * 🏷️ **估值分 (Valuation)**: **{val_score:.0f} / 100** — `{val_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映 PE/PB 相对历史与同业分位数水平</span>
-                * 🚀 **成长分 (Growth)**: **{gro_score:.0f} / 100** — `{gro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映营收与净利润同比增长动能</span>
-                * ⚡ **动能分 (Momentum)**: **{mom_score:.0f} / 100** — `{mom_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映近 1 年价格趋势与市场相对强弱</span>
-                * 💎 **盈利分 (Profitability)**: **{pro_score:.0f} / 100** — `{pro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映 ROE 净资产收益率与毛利水平</span>
-                * 🛡️ **健康分 (Health)**: **{hea_score:.0f} / 100** — `{hea_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映资产负债率与现金流偿债安全边际</span>
+                * 🏷️ **估值维度**: **{val_score:.0f} / 100** — `{val_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映市盈率/市净率相对历史与同业分位数水平</span>
+                * 🚀 **成长维度**: **{gro_score:.0f} / 100** — `{gro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映营收与净利润同比增长动能</span>
+                * ⚡ **动能维度**: **{mom_score:.0f} / 100** — `{mom_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映近 1 年价格趋势与市场相对强弱</span>
+                * 💎 **盈利维度**: **{pro_score:.0f} / 100** — `{pro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映 ROE 净资产收益率与毛利水平</span>
+                * 🛡️ **健康维度**: **{hea_score:.0f} / 100** — `{hea_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映资产负债率与现金流偿债安全边际</span>
                 """, unsafe_allow_html=True)
 
                 st.markdown("---")

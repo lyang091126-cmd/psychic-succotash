@@ -227,6 +227,9 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     min_p, max_p = min(valid_prices), max(valid_prices)
     min_m, max_m = min(valid_mcaps), max(valid_mcaps)
 
+    curr_zh_map = {'USD': '美元', 'CNY': '人民币', 'HKD': '港币', 'EUR': '欧元', 'JPY': '日元'}
+    curr_zh = curr_zh_map.get(str(currency).upper(), currency)
+
     # 3. 页面最下方展示一个高亮的方框结论 (Neon Highlight Box) - 必须顶格，不能包含任何前导空格！
     html_code = f"""<style>
 .neon-box {{
@@ -294,23 +297,23 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
         </div>
         <div class="neon-card" style="border-color: rgba(0, 242, 254, 0.25);">
             <div class="neon-card-title">推演目标市值区间</div>
-            <div class="neon-card-val">{min_m:.2f}亿 ~ {max_m:.2f}亿 ({currency})</div>
+            <div class="neon-card-val">{min_m:.2f}亿 ~ {max_m:.2f}亿 ({curr_zh})</div>
             <div class="neon-card-sub">计算股本基准: {shares_in_100m:.2f} 亿股</div>
         </div>
     </div>
     <div style="margin-top: 15px;" class="neon-details">
         <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PE 估值 (利润 × 行业 PE)</div>
+            <div style="color:#94a3b8; font-size:0.75rem;">PE 估值 (预测利润 × 行业 PE)</div>
             <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pe_price:.2f}</div>
             <div style="color:#64748b; font-size:0.7rem;">目标市值: {pe_mcap:.2f}亿</div>
         </div>
         <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PB 估值 (净资产 × 行业 PB)</div>
+            <div style="color:#94a3b8; font-size:0.75rem;">PB 估值 (预测净资产 × 行业 PB)</div>
             <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pb_price:.2f}</div>
             <div style="color:#64748b; font-size:0.7rem;">目标市值: {pb_mcap:.2f}亿</div>
         </div>
         <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PS 估值 (营收 × 行业 PS)</div>
+            <div style="color:#94a3b8; font-size:0.75rem;">PS 估值 (预测营收 × 行业 PS)</div>
             <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{ps_price:.2f}</div>
             <div style="color:#64748b; font-size:0.7rem;">目标市值: {ps_mcap:.2f}亿</div>
         </div>
