@@ -203,6 +203,8 @@ def render_macro_capital_board():
             }
             custom_data = ['涨跌幅', '当前价', '成交额(亿元)']
 
+            # 强制转换为浮点数值，防字符串字典排序错误
+            df_etf[metric_x] = pd.to_numeric(df_etf[metric_x], errors='coerce').fillna(0.0)
             df_etf_sorted = df_etf.sort_values(by=metric_x, ascending=True) # Ascending for horizontal bar
             if '涨跌幅' in df_etf_sorted.columns:
                 df_etf_sorted['颜色'] = df_etf_sorted['涨跌幅'].apply(lambda x: '#ef4444' if pd.notnull(x) and x >= 0 else '#00b865')
@@ -234,6 +236,7 @@ def render_macro_capital_board():
                 xaxis_title=f"{title_suffix} (亿元)",
                 yaxis_title="",
                 xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+                yaxis=dict(categoryorder='array', categoryarray=df_etf_sorted['名称'].tolist()),
                 bargap=0.2
             )
             st.plotly_chart(fig_etf, use_container_width=True, key="macro_etf_barchart")

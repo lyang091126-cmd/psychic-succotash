@@ -49,6 +49,13 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                 def_net_assets = (total_assets - total_liab) / 1e8
             elif mcap:
                 def_net_assets = mcap / 1e8 / 3.0
+
+    # 重置/更新 session_state，防止继承上一标的的财务数值
+    if st.session_state.get("last_calc_ticker") != ticker:
+        st.session_state["calc_pred_rev"] = float(def_rev) if def_rev > 0 else 10.0
+        st.session_state["calc_pred_net_inc"] = float(def_net_inc) if def_net_inc > 0 else 1.0
+        st.session_state["calc_pred_net_assets"] = float(def_net_assets) if def_net_assets > 0 else 20.0
+        st.session_state["last_calc_ticker"] = ticker
                 
     # 目标当前实际估值指标 (Fallback 估算逻辑)
     curr_pe = info.get('trailingPE') or info.get('forwardPE')
@@ -106,8 +113,20 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
             value=st.session_state.get('selected_ticker', ticker), 
             key="crowd_target_ticker_input"
         )
-        if target_ticker and target_ticker != st.session_state.get('selected_ticker', ticker):
-            st.session_state.selected_ticker = target_ticker
+        def resolve_tk(t):
+            t = t.strip().upper()
+            if t.isdigit() and len(t) == 6:
+                if t.startswith(('60', '68', '90', '51')):
+                    return f"{t}.SS"
+                elif t.startswith(('00', '30', '20', '15')):
+                    return f"{t}.SZ"
+                elif t.startswith(('8', '4', '92')):
+                    return f"{t}.BJ"
+            return t
+
+        resolved_target = resolve_tk(target_ticker) if target_ticker else ""
+        if resolved_target and resolved_target != st.session_state.get('selected_ticker', ticker):
+            st.session_state.selected_ticker = resolved_target
             st.rerun()
             
         pred_rev = st.number_input(f"预测营业收入 ({unit_lbl})", min_value=0.0, value=float(def_rev) if def_rev > 0 else 100.0, step=10.0, key="calc_pred_rev")
@@ -173,18 +192,31 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
 </div>""", unsafe_allow_html=True)
         
     # 全自动相对估值计算
-    pe_price = (pred_net_inc * ref_pe) / shares_in_100m if shares_in_100m > 0 else 0.0
-    pb_price = (pred_net_assets * ref_pb) / shares_in_100m if shares_in_100m > 0 else 0.0
-    ps_price = (pred_rev * ref_ps) / shares_in_100m if shares_in_100m > 0 else 0.0
+    pe_price = (pred_net_inc * ref_pe) / shares_in_100m if (shares_in_100m > 0 and pred_net_inc > 0) else 0.0
+    pb_price = (pred_net_assets * ref_pb) / shares_in_100m if (shares_in_100m > 0 and pred_net_assets > 0) else 0.0
+    ps_price = (pred_rev * ref_ps) / shares_in_100m if (shares_in_100m > 0 and pred_rev > 0) else 0.0
     
-    pe_mcap = pred_net_inc * ref_pe
-    pb_mcap = pred_net_assets * ref_pb
-    ps_mcap = pred_rev * ref_ps
+    pe_mcap = pred_net_inc * ref_pe if pred_net_inc > 0 else 0.0
+    pb_mcap = pred_net_assets * ref_pb if pred_net_assets > 0 else 0.0
+    ps_mcap = pred_rev * ref_ps if pred_rev > 0 else 0.0
     
-    prices = [pe_price, pb_price, ps_price]
-    mcaps = [pe_mcap, pb_mcap, ps_mcap]
-    min_p, max_p = min(prices), max(prices)
-    min_m, max_m = min(mcaps), max(mcaps)
+    # 过滤无效或极端离群的估值价格 (例如亏损导致负数，或 25 倍偏离)
+    valid_prices = []
+    valid_mcaps = []
+    for p_val, m_val in [(pe_price, pe_mcap), (pb_price, pb_mcap), (ps_price, ps_mcap)]:
+        if p_val > 0:
+            if price <= 0 or p_val <= 4 * price:
+                valid_prices.append(p_val)
+                valid_mcaps.append(m_val)
+                
+    if not valid_prices:
+        all_p = [p for p in [pe_price, pb_price, ps_price] if p > 0]
+        valid_prices = all_p if all_p else [price]
+        all_m = [m for m in [pe_mcap, pb_mcap, ps_mcap] if m > 0]
+        valid_mcaps = all_m if all_m else [mcap / 1e8 if mcap else 10.0]
+        
+    min_p, max_p = min(valid_prices), max(valid_prices)
+    min_m, max_m = min(valid_mcaps), max(valid_mcaps)
 
     # 3. 页面最下方展示一个高亮的方框结论 (Neon Highlight Box) - 必须顶格，不能包含任何前导空格！
     html_code = f"""<style>
