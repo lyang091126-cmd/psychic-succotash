@@ -101,6 +101,15 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
         ref_pe, ref_pb, ref_ps = 30.0, 4.0, 5.0
         is_default_pe = is_default_pb = is_default_ps = False
 
+    # 动态锚定：如果该股票当前的真实估值 (PB/PS/PE) 远高于传统行业均值 (如 NVDA 等高溢价科技巨头)，
+    # 则基准倍数自动锚定为其自身实际倍数的 95%，避免因硬套低基准倍数导致推演市值暴跌 5 倍
+    if curr_pe and curr_pe > 0:
+        ref_pe = max(ref_pe, min(curr_pe * 0.95, ref_pe * 2.0))
+    if curr_pb and curr_pb > 0:
+        ref_pb = max(ref_pb, min(curr_pb * 0.95, ref_pb * 6.0))
+    if curr_ps and curr_ps > 0:
+        ref_ps = max(ref_ps, min(curr_ps * 0.95, ref_ps * 4.0))
+
     # 布局：左侧输入预测财务指标，右侧展示水位差卡片
     calc_c1, calc_c2 = st.columns([1, 1.2])
     
@@ -200,12 +209,12 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     pb_mcap = pred_net_assets * ref_pb if pred_net_assets > 0 else 0.0
     ps_mcap = pred_rev * ref_ps if pred_rev > 0 else 0.0
     
-    # 过滤无效或极端离群的估值价格 (例如亏损导致负数，或 25 倍偏离)
+    # 过滤无效或极端离群的估值价格 (例如亏损导致负数，或偏离当前股价 3 倍以上/小于 0.25 倍)
     valid_prices = []
     valid_mcaps = []
     for p_val, m_val in [(pe_price, pe_mcap), (pb_price, pb_mcap), (ps_price, ps_mcap)]:
         if p_val > 0:
-            if price <= 0 or p_val <= 4 * price:
+            if price <= 0 or (p_val >= 0.25 * price and p_val <= 3.0 * price):
                 valid_prices.append(p_val)
                 valid_mcaps.append(m_val)
                 

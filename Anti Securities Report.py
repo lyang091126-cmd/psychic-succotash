@@ -1862,15 +1862,34 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.caption("📌 五维评分基于真实财务数据的固定映射公式归一化到0-100，客观指标可视化，不代表投资建议。")
 
             with exec_c2:
-                st.markdown('<div class="bg-card-glass" style="padding:15px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
-                st.markdown("#### 🧠 AI 反共识摘要总结")
-                st.markdown('<span class="badge-neutral">此摘要由 AI 生成，仅为对真实数据的客观陈述整理</span>', unsafe_allow_html=True)
+                st.markdown('<div class="bg-card-glass" style="padding:18px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
+                st.markdown("#### 🎯 标的五维画像量化诊断")
+                st.markdown('<span class="badge-neutral">基于真实财务与行情指标映射的五维归一化解构</span>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
 
-                try:
-                    st.markdown(ai_reply if 'ai_reply' in locals() else "等待 AI 报告生成...", unsafe_allow_html=True)
-                except Exception:
-                    st.markdown("等待 AI 报告生成...")
+                val_score = radar_scores.get('估值 (Valuation)', 50)
+                gro_score = radar_scores.get('成长 (Growth)', 50)
+                mom_score = radar_scores.get('动能 (Momentum)', 50)
+                pro_score = radar_scores.get('盈利 (Profitability)', 50)
+                hea_score = radar_scores.get('健康 (Health)', 50)
 
+                val_status = "估值偏高" if val_score < 40 else ("估值合理" if val_score <= 70 else "估值吸引力高")
+                gro_status = "成长放缓" if gro_score < 40 else ("稳健成长" if gro_score <= 70 else "强劲高增")
+                mom_status = "动能较弱" if mom_score < 40 else ("趋势平稳" if mom_score <= 70 else "强劲上行")
+                pro_status = "盈利承压" if pro_score < 40 else ("盈利良好" if pro_score <= 70 else "卓越盈利")
+                hea_status = "财务偏紧" if hea_score < 40 else ("财务稳健" if hea_score <= 70 else "极佳杠杆")
+
+                st.markdown(f"""
+                * 🏷️ **估值分 (Valuation)**: **{val_score:.0f} / 100** — `{val_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映 PE/PB 相对历史与同业分位数水平</span>
+                * 🚀 **成长分 (Growth)**: **{gro_score:.0f} / 100** — `{gro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映营收与净利润同比增长动能</span>
+                * ⚡ **动能分 (Momentum)**: **{mom_score:.0f} / 100** — `{mom_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映近 1 年价格趋势与市场相对强弱</span>
+                * 💎 **盈利分 (Profitability)**: **{pro_score:.0f} / 100** — `{pro_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映 ROE 净资产收益率与毛利水平</span>
+                * 🛡️ **健康分 (Health)**: **{hea_score:.0f} / 100** — `{hea_status}` <br><span style="font-size:0.8rem; color:#94A3B8;">反映资产负债率与现金流偿债安全边际</span>
+                """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                avg_score = sum(radar_scores.values()) / 5.0
+                st.markdown(f"💡 **五维综合健康指数**: <span style='font-size:1.15rem; font-weight:bold; color:#00F2FE;'>{avg_score:.1f} / 100</span>", unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
