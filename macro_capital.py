@@ -214,25 +214,36 @@ def render_macro_capital_board():
                 custom_data=['净流入(亿元)', '涨跌幅', '领涨股']
             )
             
-            fig_tree.update_traces(
-                textinfo='label+value+percent parent',
-                textfont=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif", size=16),
-                texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:.2f}亿<br>涨幅: %{customdata[1]:.2f}%",
-                hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
-                marker=dict(cornerradius=5, line=dict(color='#0A0D14', width=2))
-            )
+            try:
+                fig_tree.update_traces(
+                    textinfo="label+value+percent parent",
+                    texttemplate="<b>%{label}</b><br>净额: %{customdata[0]:+.2f}亿<br>涨幅: %{customdata[1]:+.2f}%",
+                    textfont=dict(size=24, family="sans-serif"),  # 将大区块字号基准提升至 24px 加粗
+                    textposition="middle center",
+                    hovertemplate="<b>%{label}</b><br>净流入: %{customdata[0]:.2f}亿<br>行业涨跌: %{customdata[1]:.2f}%<br>领涨龙头: %{customdata[2]}<extra></extra>",
+                    marker=dict(cornerradius=6, pad=dict(t=3, l=3, r=3, b=3), line=dict(color='#0A0D14', width=2))
+                )
+            except Exception:
+                try:
+                    fig_tree.update_traces(
+                        textinfo="label+value",
+                        textfont=dict(size=24, family="sans-serif"),
+                        textposition="middle center",
+                        marker=dict(cornerradius=6, pad=dict(t=3, l=3, r=3, b=3), line=dict(color='#0A0D14', width=2))
+                    )
+                except Exception:
+                    pass
             
             fig_tree.update_layout(
                 font=dict(family="Inter, Roboto, 'Microsoft YaHei', sans-serif"),
-                uniformtext=dict(minsize=10, mode='hide'),
-                height=700,
-                width=None,
-                margin=dict(l=40, r=40, t=60, b=40),
-                title_font_size=20,
-                xaxis=dict(tickangle=-45, tickfont=dict(size=11)),
-                yaxis=dict(tickfont=dict(size=11)),
-                plot_bgcolor='rgba(0,0,0,0)',
+                uniformtext=dict(
+                    minsize=13,  # 设定字号下限为 13px
+                    mode='hide'  # 小于 13px 的微小区块自动隐藏文字，避免拖累大区块
+                ),
+                height=650,  # 确保给热力图充裕的垂直空间
+                margin=dict(l=10, r=10, t=35, b=10),
                 paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
                 coloraxis_colorbar=dict(
                     title="净流入(亿)",
                     thicknessmode="pixels", thickness=15,
