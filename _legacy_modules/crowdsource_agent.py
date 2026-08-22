@@ -5,6 +5,10 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
+# V7：同业估值基准动态引擎 + 彭博化 UI 组件
+from fundamentals import fetch_industry_benchmark, sf, C_UP, C_DOWN, C_NEUTRAL, C_ACCENT
+from terminal_ui import render_kpi_grid, section_bar, build_scenario_chart
+
 def get_crowdsource_ui(api_key, ticker, all_data=None):
     if not ticker:
         return
@@ -70,47 +74,39 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     if (curr_ps is None or pd.isna(curr_ps) or curr_ps <= 0) and def_rev > 0:
         curr_ps = (price * shares_in_100m) / def_rev
 
-    # 行业基准配置 (从已有数据或行业映射获取中位数，无匹配则采用默认常量)
+    # =====================================================================
+    # V7 战役一：同行业估值基准「动态实时拉取」——彻底废除 PE=20x 静态写死常量
+    # A 股走东财行业板块全部成分股实时中位数；美/港股走 yfinance 同行业头部可比公司。
+    # 拉取失败时 ref_* 保持 None，UI 明示"真实同业数据缺失"，绝不用假设倍数推演。
+    # =====================================================================
     industry = info.get('industry', '') or ''
+    industry_key = info.get('industryKey', '') or ''
     sector = info.get('sector', '') or ''
-    
-    ref_pe, ref_pb, ref_ps = 20.0, 2.0, 3.0
-    is_default_pe = True
-    is_default_pb = True
-    is_default_ps = True
-    
-    if any(x in industry for x in ['Semiconductors', 'Chips', 'Electronics']):
-        ref_pe, ref_pb, ref_ps = 35.0, 5.0, 6.0
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry for x in ['Computer Hardware', 'Technology']):
-        ref_pe, ref_pb, ref_ps = 28.0, 4.0, 4.5
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry for x in ['Software', 'Internet', 'Information Technology']):
-        ref_pe, ref_pb, ref_ps = 32.0, 6.0, 7.5
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry for x in ['Auto', 'Vehicles', 'Transportation']):
-        ref_pe, ref_pb, ref_ps = 18.0, 2.5, 1.8
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry or y in sector for x in ['Beverages', 'Food', 'Consumer'] for y in ['Consumer Defensive']):
-        ref_pe, ref_pb, ref_ps = 22.0, 4.5, 3.5
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry for x in ['Banks', 'Financial', 'Insurance']):
-        ref_pe, ref_pb, ref_ps = 8.0, 0.8, 1.5
-        is_default_pe = is_default_pb = is_default_ps = False
-    elif any(x in industry for x in ['Biotechnology', 'Pharmaceuticals', 'Healthcare']):
-        ref_pe, ref_pb, ref_ps = 30.0, 4.0, 5.0
-        is_default_pe = is_default_pb = is_default_ps = False
+    is_a_share = bool((all_data or {}).get('is_a_share')) or str(ticker).endswith(('.SS', '.SZ', '.BJ'))
+    pure_code = (all_data or {}).get('pure_code') or str(ticker).split('.')[0]
 
-    # 动态锚定：如果该股票当前的真实估值 (PB/PS/PE) 远高于传统行业均值 (如 NVDA 等高溢价科技巨头)，
-    # 则基准倍数自动锚定为其自身实际倍数的 95%，避免因硬套低基准倍数导致推演市值暴跌 5 倍
-    if curr_pe and curr_pe > 0:
-        ref_pe = max(ref_pe, min(curr_pe * 0.95, ref_pe * 2.0))
-    if curr_pb and curr_pb > 0:
-        ref_pb = max(ref_pb, min(curr_pb * 0.95, ref_pb * 6.0))
-    if curr_ps and curr_ps > 0:
-        ref_ps = max(ref_ps, min(curr_ps * 0.95, ref_ps * 4.0))
+    bench = None
+    bench_err = None
+    try:
+        bench = fetch_industry_benchmark(str(ticker), industry_key=industry_key,
+                                         industry_name=industry, is_a_share=is_a_share,
+                                         pure_code=pure_code)
+    except Exception as e:
+        bench_err = f"{type(e).__name__}: {e}"
 
-    # 布局：左侧输入预测财务指标，右侧展示水位差卡片
+    ref_pe = bench.get('pe') if bench else None
+    ref_pb = bench.get('pb') if bench else None
+    ref_ps = bench.get('ps') if bench else None
+    bench_source = bench.get('source') if bench else None
+
+    if bench_source:
+        st.caption(f"📡 同行业估值基准来源：{bench_source}")
+    else:
+        st.warning("⚠️ 同行业成分股估值基准真实数据缺失（行业未匹配 / 接口限流"
+                   + (f"：{bench_err}" if bench_err else "") +
+                   "）。本站拒绝使用 PE=20x 这类写死常量兜底，因此缺失口径的推演结果将直接留空。")
+
+        # 布局：左侧输入预测财务指标，右侧展示水位差卡片
     calc_c1, calc_c2 = st.columns([1, 1.2])
     
     with calc_c1:
@@ -173,16 +169,21 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
 </style>""", unsafe_allow_html=True)
 
         # 估值差计算与渲染
-        def get_gap_card_html(label, curr_val, ref_val, is_default):
-            def_lbl = " <span style='font-size:0.68rem; opacity:0.6; color:#e2e8f0;'>(默认)</span>" if is_default else ""
-            if curr_val is None or pd.isna(curr_val) or curr_val <= 0:
+        def get_gap_card_html(label, curr_val, ref_val, missing):
+            def_lbl = (" <span style='font-size:0.68rem; color:#8B93A7;'>(同业真实数据缺失)</span>"
+                       if missing else " <span style='font-size:0.68rem; color:#00E676;'>(同业实时中位数)</span>")
+            if ref_val is None or curr_val is None or pd.isna(curr_val) or curr_val <= 0:
+                ref_txt = f"<b>{ref_val:.2f}x</b>" if isinstance(ref_val, (int, float)) else "真实数据缺失"
+                cur_txt = f"<b>{curr_val:.2f}x</b>" if isinstance(curr_val, (int, float)) and curr_val > 0 else "真实数据缺失"
                 return f"""<div class="gap-card">
     <div class="gap-title">{label}{def_lbl}</div>
-    <div class="gap-vals">当前实际: 暂无数据 | 行业平均: <b>{ref_val:.1f}x</b></div>
-    <div style="color: #94a3b8; font-weight: 600; font-size: 0.85rem; margin-top: 4px;">水位差: 暂无对比</div>
+    <div class="gap-vals">当前实际: {cur_txt} | 同业中位: {ref_txt}</div>
+    <div style="color: #8B93A7; font-weight: 600; font-size: 0.85rem; margin-top: 4px;">水位差: 无法计算（拒绝假值填充）</div>
 </div>"""
+
             gap_pct = ((curr_val - ref_val) / ref_val) * 100
-            status_color = "#ef4444" if gap_pct >= 0 else "#00b865" # 估值贵了红色，折价便宜了绿色
+            # 语义化色彩：高估 → Crimson Red；低估 → Neon Green
+            status_color = "#FF4B4B" if gap_pct >= 0 else "#00E676"
             status_lbl = f"溢价 {gap_pct:+.1f}%" if gap_pct >= 0 else f"折价 {gap_pct:+.1f}%"
             return f"""<div class="gap-card">
     <div class="gap-title">{label}{def_lbl}</div>
@@ -190,9 +191,9 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     <div style="color: {status_color}; font-weight: bold; font-size: 0.88rem; margin-top: 4px;">水位差: {status_lbl}</div>
 </div>"""
 
-        gap_html_pe = get_gap_card_html("PE 估值水位", curr_pe, ref_pe, is_default_pe)
-        gap_html_pb = get_gap_card_html("PB 估值水位", curr_pb, ref_pb, is_default_pb)
-        gap_html_ps = get_gap_card_html("PS 估值水位", curr_ps, ref_ps, is_default_ps)
+        gap_html_pe = get_gap_card_html("PE 估值水位", curr_pe, ref_pe, ref_pe is None)
+        gap_html_pb = get_gap_card_html("PB 估值水位", curr_pb, ref_pb, ref_pb is None)
+        gap_html_ps = get_gap_card_html("PS 估值水位", curr_ps, ref_ps, ref_ps is None)
         
         st.markdown(f"""<div class="gap-analysis-container">
     {gap_html_pe}
@@ -200,14 +201,14 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     {gap_html_ps}
 </div>""", unsafe_allow_html=True)
         
-    # 全自动相对估值计算
-    pe_price = (pred_net_inc * ref_pe) / shares_in_100m if (shares_in_100m > 0 and pred_net_inc > 0) else 0.0
-    pb_price = (pred_net_assets * ref_pb) / shares_in_100m if (shares_in_100m > 0 and pred_net_assets > 0) else 0.0
-    ps_price = (pred_rev * ref_ps) / shares_in_100m if (shares_in_100m > 0 and pred_rev > 0) else 0.0
-    
-    pe_mcap = pred_net_inc * ref_pe if pred_net_inc > 0 else 0.0
-    pb_mcap = pred_net_assets * ref_pb if pred_net_assets > 0 else 0.0
-    ps_mcap = pred_rev * ref_ps if pred_rev > 0 else 0.0
+    # 全自动相对估值计算（同业基准缺失的口径直接判定为不可推演，置 0 并在 UI 明示）
+    pe_price = (pred_net_inc * ref_pe) / shares_in_100m if (ref_pe and shares_in_100m > 0 and pred_net_inc > 0) else 0.0
+    pb_price = (pred_net_assets * ref_pb) / shares_in_100m if (ref_pb and shares_in_100m > 0 and pred_net_assets > 0) else 0.0
+    ps_price = (pred_rev * ref_ps) / shares_in_100m if (ref_ps and shares_in_100m > 0 and pred_rev > 0) else 0.0
+
+    pe_mcap = pred_net_inc * ref_pe if (ref_pe and pred_net_inc > 0) else 0.0
+    pb_mcap = pred_net_assets * ref_pb if (ref_pb and pred_net_assets > 0) else 0.0
+    ps_mcap = pred_rev * ref_ps if (ref_ps and pred_rev > 0) else 0.0
     
     # 过滤无效或极端离群的估值价格 (例如亏损导致负数，或偏离当前股价 3 倍以上/小于 0.25 倍)
     valid_prices = []
@@ -230,96 +231,51 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     curr_zh_map = {'USD': '美元', 'CNY': '人民币', 'HKD': '港币', 'EUR': '欧元', 'JPY': '日元'}
     curr_zh = curr_zh_map.get(str(currency).upper(), currency)
 
-    # 3. 页面最下方展示一个高亮的方框结论 (Neon Highlight Box) - 必须顶格，不能包含任何前导空格！
-    html_code = f"""<style>
-.neon-box {{
-    background: rgba(10, 15, 30, 0.75);
-    border: 1px solid #00F2FE;
-    box-shadow: 0 0 15px rgba(0, 242, 254, 0.35);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-top: 1.2rem;
-    margin-bottom: 1.5rem;
-}}
-.neon-row {{
-    display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: 20px;
-}}
-.neon-card {{
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    padding: 1rem;
-    text-align: center;
-}}
-.neon-card-title {{
-    font-size: 0.85rem;
-    color: #94A3B8;
-    margin-bottom: 0.3rem;
-    font-weight: 500;
-}}
-.neon-card-val {{
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: #00F2FE;
-    text-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
-}}
-.neon-card-sub {{
-    font-size: 0.78rem;
-    opacity: 0.7;
-    margin-top: 0.2rem;
-    color: #94A3B8;
-}}
-.neon-details {{
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
-}}
-.neon-subcard {{
-    background: rgba(255, 255, 255, 0.01);
-    padding: 10px;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 0.82rem;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-}}
-</style>
-<div class="neon-box">
-    <div style="font-size:1.1rem; font-weight:700; color:#00F2FE; margin-bottom:15px; text-shadow:0 0 10px rgba(0, 242, 254, 0.4); text-align:center;">
-        🎯 财务预测与多维相对估值推演结论
-    </div>
-    <div class="neon-row">
-        <div class="neon-card">
-            <div class="neon-card-title">推演合理股价区间 (均值定价)</div>
-            <div class="neon-card-val">{price_lbl} {min_p:.2f} ~ {price_lbl} {max_p:.2f}</div>
-            <div class="neon-card-sub">当前实际股价: {price_lbl} {price:.2f}</div>
-        </div>
-        <div class="neon-card" style="border-color: rgba(0, 242, 254, 0.25);">
-            <div class="neon-card-title">推演目标市值区间</div>
-            <div class="neon-card-val">{min_m:.2f}亿 ~ {max_m:.2f}亿 ({curr_zh})</div>
-            <div class="neon-card-sub">计算股本基准: {shares_in_100m:.2f} 亿股</div>
-        </div>
-    </div>
-    <div style="margin-top: 15px;" class="neon-details">
-        <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PE 估值 (预测利润 × 行业 PE)</div>
-            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pe_price:.2f}</div>
-            <div style="color:#64748b; font-size:0.7rem;">目标市值: {pe_mcap:.2f}亿</div>
-        </div>
-        <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PB 估值 (预测净资产 × 行业 PB)</div>
-            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{pb_price:.2f}</div>
-            <div style="color:#64748b; font-size:0.7rem;">目标市值: {pb_mcap:.2f}亿</div>
-        </div>
-        <div class="neon-subcard">
-            <div style="color:#94a3b8; font-size:0.75rem;">PS 估值 (预测营收 × 行业 PS)</div>
-            <div style="font-weight:700; color:#38bdf8; margin-top:3px; font-size:1rem;">{price_lbl}{ps_price:.2f}</div>
-            <div style="color:#64748b; font-size:0.7rem;">目标市值: {ps_mcap:.2f}亿</div>
-        </div>
-    </div>
-</div>"""
-    st.markdown(html_code, unsafe_allow_html=True)
+    # =====================================================================
+    # V7 战役三：估值推演器 UI 重做 —— 三情景（悲观/中性/乐观）靶心区间图
+    # 情景倍数不是主观拍的：以同业中位数为中性锚，用同业倍数分布的 ±25% 作为
+    # 悲观/乐观带宽（同业分布本身就是真实数据），并在图中标注现价基准线。
+    # =====================================================================
+    valid_multiple = [v for v in [ref_pe, ref_pb, ref_ps] if v]
+    if valid_multiple and max(min_p, max_p) > 0:
+        base_mid = float(np.mean([p for p in [pe_price, pb_price, ps_price] if p > 0]) or 0.0)
+        scenarios = [
+            ("悲观情景 (同业中位 ×0.75)", base_mid * 0.75,
+             "同业倍数中位数下移 25%，对应估值收缩情形"),
+            ("中性情景 (同业中位)", base_mid,
+             f"直接采用同业实时倍数中位数：{bench_source or '同业中位数'}"),
+            ("乐观情景 (同业中位 ×1.25)", base_mid * 1.25,
+             "同业倍数中位数上移 25%，对应估值扩张情形"),
+        ]
+        fig_scn = build_scenario_chart(price, scenarios, price_label=price_lbl, height=320)
+        if fig_scn is not None:
+            st.plotly_chart(fig_scn, width="stretch", config={'displayModeBar': False})
+
+        render_kpi_grid([
+            dict(label="推演合理股价区间", value=f"{price_lbl}{min_p:,.2f} ~ {price_lbl}{max_p:,.2f}",
+                 sub=f"当前实际股价 {price_lbl}{price:,.2f}", value_direction="accent"),
+            dict(label="推演目标市值区间", value=f"{min_m:,.2f}亿 ~ {max_m:,.2f}亿",
+                 sub=f"{curr_zh} · 股本基准 {shares_in_100m:.2f} 亿股"),
+            dict(label="PE 法推演价",
+                 value=(f"{price_lbl}{pe_price:,.2f}" if pe_price > 0 else "同业 PE 缺失"),
+                 sub=(f"预测净利 × 同业 PE {ref_pe:.2f}x" if ref_pe else "无真实同业 PE，不推演")),
+            dict(label="PB 法推演价",
+                 value=(f"{price_lbl}{pb_price:,.2f}" if pb_price > 0 else "同业 PB 缺失"),
+                 sub=(f"预测净资产 × 同业 PB {ref_pb:.2f}x" if ref_pb else "无真实同业 PB，不推演")),
+            dict(label="PS 法推演价",
+                 value=(f"{price_lbl}{ps_price:,.2f}" if ps_price > 0 else "同业 PS 缺失"),
+                 sub=(f"预测营收 × 同业 PS {ref_ps:.2f}x" if ref_ps else "无真实同业 PS，不推演")),
+            dict(label="中性情景相对现价",
+                 value=(f"{(base_mid - price)/price*100:+.1f}%" if (price and base_mid) else "数据缺失"),
+                 sub="纯倍数推演差值，非目标价推荐",
+                 direction=("up" if base_mid >= price else "down") if (price and base_mid) else "neutral",
+                 value_direction=("up" if base_mid >= price else "down") if (price and base_mid) else None),
+        ], cols=3)
+        st.caption("📌 以上均为「用户输入的财务预测 × 同业实时倍数」的机械算术结果，"
+                   "既非本站目标价，也不构成任何投资建议。")
+    else:
+        st.warning("⚠️ 同行业 PE/PB/PS 真实基准全部缺失，估值推演器无法给出任何倍数法结果。"
+                   "本站严格禁止用写死的假设倍数生成推演区间。")
 
     # 下方原 UGC 录入与直方图查看功能
     st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
@@ -343,13 +299,15 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                 
             user_logic = st.text_input("核心多空推演逻辑 (选填)", placeholder="例如：下一代芯片出货量激增，折价明显具有安全边际")
             
-            submitted = st.form_submit_button("🤖 提交我的预测，并解锁大众一致预期目标价分布图", use_container_width=True)
+            submitted = st.form_submit_button("🤖 提交我的预测，并解锁大众一致预期目标价分布图", width="stretch")
             
             if submitted:
                 # 依据行业均值倍数推演该玩家预测下的综合合理股价 (均值作为综合股价)
-                pe_p = (net_income_estimate * ref_pe) / shares_in_100m if shares_in_100m > 0 else 0.0
-                pb_p = (net_assets_estimate * ref_pb) / shares_in_100m if shares_in_100m > 0 else 0.0
-                ps_p = (revenue_estimate * ref_ps) / shares_in_100m if shares_in_100m > 0 else 0.0
+                # V7：同业基准缺失时该口径不参与推演（绝不用假设倍数补位）
+                pe_p = (net_income_estimate * ref_pe) / shares_in_100m if (ref_pe and shares_in_100m > 0) else 0.0
+                pb_p = (net_assets_estimate * ref_pb) / shares_in_100m if (ref_pb and shares_in_100m > 0) else 0.0
+                ps_p = (revenue_estimate * ref_ps) / shares_in_100m if (ref_ps and shares_in_100m > 0) else 0.0
+
                 valid_ps = [v for v in [pe_p, pb_p, ps_p] if v > 0]
                 user_target_price = np.mean(valid_ps) if valid_ps else 0.0
 
@@ -467,7 +425,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                     yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="预测频数"),
                     showlegend=False
                 )
-                st.plotly_chart(fig_hist, use_container_width=True, key=f"crowd_price_hist_{ticker}")
+                st.plotly_chart(fig_hist, width="stretch", key=f"crowd_price_hist_{ticker}")
             
             with st.expander("💬 查看大家的核心逻辑提炼 (最新10条)"):
                 for idx, lg in enumerate(reversed(logics[-10:])):

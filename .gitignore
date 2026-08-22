@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+_*.txt
+news_cache.json
+dbg_out.txt
+debug_out.txt
+Anti Securities Report_pre_v8.py
+Anti Securities Report_prev_modular.py
+Anti Securities Report_backup.py
