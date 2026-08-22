@@ -64,10 +64,20 @@ C_ACCENT_SOFT = "#4B9FFF"
 C_WARN = "#FF9800"
 C_TEXT = "#D1D4DC"      # 正文（TradingView 文字灰白）
 C_TEXT_STRONG = "#F0F3FA"
-C_BG_APP = "#131722"    # 全局背景（深海军蓝，非纯黑）
-C_BG_PANEL = "#171B26"
-C_BG_CARD = "#1E222D"   # 卡片底
-C_BORDER = "#2B3139"    # 分隔边框
+# V10 五·色彩重构：对齐 Bloomberg/Wind 深藏青枪灰质感
+C_BG_APP = "#0B1120"    # 全局背景（深藏青/枪灰，弃用死板全黑）
+C_BG_PANEL = "#0F172A"
+C_BG_CARD = "rgba(30, 41, 59, 0.7)"   # 卡片底（半透明，配合毛玻璃）
+C_BORDER = "rgba(255, 255, 255, 0.1)"  # 细微亮边
+
+# ---------------------------------------------------------------------------
+# V10 五·涨跌语义切换：默认 A 股口径（红涨绿跌），可切国际口径（绿涨红跌）。
+# 切换控件在首屏搜索栏右侧（intl_color_mode）；此处仅重绑定常量，
+# 全站所有引用 C_UP/C_DOWN 的 Plotly 图表与 HTML 渲染自动跟随，无散落硬编码。
+# ---------------------------------------------------------------------------
+if not st.session_state.get("intl_color_mode", False):
+    C_UP, C_UP_DIM = "#EF5350", "#C0392B"      # A 股：红 = 上涨/流入/低估修复
+    C_DOWN, C_DOWN_DIM = "#26A69A", "#1E8E82"  # A 股：绿 = 下跌/流出/高估回落
 
 
 # ===========================================================================
@@ -1198,7 +1208,7 @@ def build_dupont_chart(adv, height=300):
         yaxis=dict(tickfont=dict(size=10)),
     )
     fig.add_vline(x=1.0, line=dict(color=C_NEUTRAL, width=1, dash="dash"))
-    return fig
+    return apply_institutional_axes(fig)
 
 
 # ===========================================================================
@@ -1223,7 +1233,7 @@ def build_quality_bridge_chart(adv, height=280):
         yaxis=dict(title="金额（原始币种）", title_font=dict(size=9),
                    gridcolor="rgba(255,255,255,0.05)"),
     )
-    return fig
+    return apply_institutional_axes(fig)
 
 
 # ===========================================================================
@@ -1260,12 +1270,25 @@ def build_scenario_chart(current_price, scenarios, price_label="", height=330):
                    gridcolor="rgba(255,255,255,0.05)"),
         yaxis=dict(tickfont=dict(size=10)),
     )
-    return fig
+    return apply_institutional_axes(fig)
 
 
 # ===========================================================================
 # 8. V8：EPS 盈利惊喜（Beat/Miss）柱状图 —— 用于填补右侧物理空白
 # ===========================================================================
+def apply_institutional_axes(fig):
+    """V10 P10：机构级坐标轴基准线——所有柱状/折线图统一 X 轴边框与零线，
+    对齐 Bloomberg/Wind 的严谨观感。饼图/雷达图等无坐标轴图表不适用。"""
+    try:
+        fig.update_xaxes(showline=True, linewidth=1.5,
+                         linecolor='rgba(255, 255, 255, 0.4)', mirror=True,
+                         zeroline=True, zerolinewidth=1.5,
+                         zerolinecolor='rgba(255, 255, 255, 0.5)')
+    except Exception:
+        pass
+    return fig
+
+
 def build_eps_surprise_chart(rows, height=300):
     """过往各期 EPS 预期 vs 实际对比；超预期=沉稳绿，不及预期=警示红。"""
     rows = [r for r in (rows or []) if r.get("rep") is not None]
@@ -1290,15 +1313,15 @@ def build_eps_surprise_chart(rows, height=300):
                          hovertemplate="实际 %{y:.3f}<extra></extra>"))
     fig.update_layout(
         height=height, template="plotly_dark", barmode="group",
-        # V9 P5：图内标题删除（外层 section_bar 已有标题），杜绝标题与图例重叠；
-        # 图例移到柱体下方，顶部仅留少量呼吸空间
-        margin=dict(l=8, r=8, t=14, b=36), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
-        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+        # V10 P3/P5：机构级四周留白（t=60 b=80 l=40 r=40），杜绝文字挤压重叠
+        margin=dict(t=60, b=80, l=40, r=40), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5,
                     font=dict(size=9)),
         yaxis=dict(title="EPS", title_font=dict(size=9), gridcolor="rgba(255,255,255,0.05)"),
-        xaxis=dict(tickfont=dict(size=9)),
+        # V10 P3/P5：底部日期标签 45° 倾斜，长标签不再互相叠压
+        xaxis=dict(tickfont=dict(size=9), tickangle=-45),
     )
-    return fig
+    return apply_institutional_axes(fig)
 
 
 def render_gap_bars(pairs):
@@ -1604,7 +1627,7 @@ def render_macro_capital_board():
                 yaxis=dict(categoryorder='array', categoryarray=df_etf_sorted['名称'].tolist()),
                 bargap=0.2
             )
-            st.plotly_chart(fig_etf, width="stretch", key="macro_etf_barchart")
+            st.plotly_chart(apply_institutional_axes(fig_etf), width="stretch", key="macro_etf_barchart")
             
         else:
             st.warning("暂无 ETF 数据")
@@ -1699,7 +1722,7 @@ def render_macro_capital_board():
                     yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="净额 (亿元)")
                 )
                 
-                st.plotly_chart(fig_trend, width="stretch", key=f"flow_trend_{etf_tk}")
+                st.plotly_chart(apply_institutional_axes(fig_trend), width="stretch", key=f"flow_trend_{etf_tk}")
             else:
                 st.info("暂无足够的历史日线数据来估算资金流趋势。")
         except Exception as e:
@@ -2333,32 +2356,15 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                    "）。本站拒绝使用 PE=20x 这类写死常量兜底，因此缺失口径的推演结果将直接留空。")
 
         # 布局：左侧输入预测财务指标，右侧展示水位差卡片
-    calc_c1, calc_c2 = st.columns([1, 1.2])
+    # V10 P9：左文右图垂直居中对齐，消除两侧视觉高低差
+    calc_c1, calc_c2 = st.columns([1, 1.2], vertical_alignment="center")
     
     with calc_c1:
         st.write("#### 1. 预测财务指标")
         
-        # P2: 新增标的选择输入框
-        target_ticker = st.text_input(
-            "选择需要预测的标的代码/简称 (按回车确认)", 
-            value=st.session_state.get('selected_ticker', ticker), 
-            key="crowd_target_ticker_input"
-        )
-        def resolve_tk(t):
-            t = t.strip().upper()
-            if t.isdigit() and len(t) == 6:
-                if t.startswith(('60', '68', '90', '51')):
-                    return f"{t}.SS"
-                elif t.startswith(('00', '30', '20', '15')):
-                    return f"{t}.SZ"
-                elif t.startswith(('8', '4', '92')):
-                    return f"{t}.BJ"
-            return t
-
-        resolved_target = resolve_tk(target_ticker) if target_ticker else ""
-        if resolved_target and resolved_target != st.session_state.get('selected_ticker', ticker):
-            st.session_state.selected_ticker = resolved_target
-            st.rerun()
+        # V10 P1：全站唯一全局搜索框（页面顶部），此处不再放第二个标的输入框；
+        # 众包计算器直接跟随全局 selected_ticker，避免重复输入与状态互相覆盖。
+        st.caption("🎯 当前预测标的跟随顶部全局搜索框，切换标的请在上方输入")
             
         # V8 修复：key 已在 session_state 设初值（上方换股重置块）的控件不能再
         # 传 value=，否则 Streamlit 抛 StreamlitAPIException，整个众包区中断。
@@ -2658,7 +2664,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                     yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="预测频数"),
                     showlegend=False
                 )
-                st.plotly_chart(fig_hist, width="stretch", key=f"crowd_price_hist_{ticker}")
+                st.plotly_chart(apply_institutional_axes(fig_hist), width="stretch", key=f"crowd_price_hist_{ticker}")
             
             with st.expander("💬 查看大家的核心逻辑提炼 (最新10条)"):
                 for idx, lg in enumerate(reversed(logics[-10:])):
@@ -2767,9 +2773,10 @@ setInterval(function() {
     /* P4 & P5 Alignment & Financial Cards CSS injection */
     div[data-testid="stColumn"] > div > div[data-testid="stButton"] { margin-top: 27px !important; }
     
+    /* V10 P7：固定 5 列网格 × 10 张卡 = 完美双排满格 */
     .financial-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        grid-template-columns: repeat(5, 1fr);
         gap: 15px;
         margin-top: 15px;
         margin-bottom: 20px;
@@ -2836,6 +2843,57 @@ setInterval(function() {
     div[data-testid="stDataFrame"] { background: #171B26 !important; border-radius: 12px !important; }
     [data-testid="stExpander"] { background: transparent !important; border-radius: 12px !important; }
     [data-testid="stAlert"] { border-radius: 8px !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# V10 五·机构级玻璃拟态 + 高亮数值 + 动态涨跌语义色（跟随 A股/国际 切换）
+# 说明：上一块是静态 CSS；本块用 f-string 把当前 C_UP/C_DOWN 注入覆盖层，
+# 切换开关触发 rerun 后本块自动换色，全站 .trend-*/.market-chg-* 即时联动。
+# ---------------------------------------------------------------------------
+st.markdown(f"""
+<style>
+/* 深藏青枪灰背景体系 */
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stHeader"] {{
+    background: {C_BG_APP} !important;
+}}
+section[data-testid="stSidebar"] {{ background: {C_BG_PANEL} !important; }}
+
+/* 玻璃拟态卡片：半透明底 + 毛玻璃 + 细亮边 + 柔和投影
+   （body 前缀抬高优先级，压过后方终端 CSS 的同重要级旧色规则） */
+body .fin-card, body .tcard, body .kpi-neon-card, body .market-card,
+body div[data-testid="stMetric"], body .bg-card-glass {{
+    background: rgba(30, 41, 59, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+    border-radius: 12px !important;
+}}
+
+/* 指标数值高亮：核心数值统一青色霓虹，焦点信息一眼锁定 */
+.fin-value {{ color: #00F2FE !important; text-shadow: 0 0 10px rgba(0, 242, 254, 0.25); }}
+.kpi-neon-value {{ color: #00F2FE !important; text-shadow: 0 0 10px rgba(0, 242, 254, 0.25); }}
+.gapbar-val {{ font-family: 'JetBrains Mono', monospace; }}
+
+/* 涨跌语义色动态覆盖（默认 A 股：红涨绿跌；国际模式：绿涨红跌） */
+.trend-up {{ color: {C_UP} !important; }}
+.trend-down {{ color: {C_DOWN} !important; }}
+.market-chg-up {{ color: {C_UP} !important; }}
+.market-chg-down {{ color: {C_DOWN} !important; }}
+
+/* V10 P6·Tabs 水平均分（机构指定样式，含 !important；
+   同时保留上方 #stTabs div[role=tab] 规则以兼容本版 Streamlit 的 DOM） */
+div[data-testid="stTabs"] button {{
+    flex: 1 !important;
+    text-align: center !important;
+    font-weight: bold !important;
+}}
+#stTabs div[role="tab"], .stTabs div[role="tab"] {{
+    flex: 1 !important;
+    text-align: center !important;
+    font-weight: bold !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -3258,12 +3316,14 @@ def fetch_global_markets():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_hot_stocks():
-    """基于实时涨幅/成交量抓取热门标的（精细 20 根 K线缩略图数据）"""
+    """基于实时涨幅/成交量抓取热门标的（精细 20 根 K线缩略图数据）
+    V10 P8：候选池全面 A 股化——只保留 A 股核心资产（消费/新能源/算力/半导体/金融），
+    剔除全部美股与港股候选，贴合 A 股投研终端定位。"""
     candidates = {
-        '英伟达': 'NVDA', '苹果': 'AAPL', '特斯拉': 'TSLA', '微软': 'MSFT',
-        '新易盛': '300502.SZ', '中际旭创': '300308.SZ', '谷歌': 'GOOGL', '亚马逊': 'AMZN',
-        '台积电': 'TSM', 'Meta': 'META', '贵州茅台': '600519.SS', '宁德时代': '300750.SZ',
-        '比亚迪': '002594.SZ', '中芯国际': '688981.SS', '腾讯控股': '0700.HK',
+        '贵州茅台': '600519.SS', '宁德时代': '300750.SZ', '中际旭创': '300308.SZ',
+        '新易盛': '300502.SZ', '比亚迪': '002594.SZ', '中芯国际': '688981.SS',
+        '招商银行': '600036.SS', '长江电力': '600900.SS', '立讯精密': '002475.SZ',
+        '京东方A': '000725.SZ', '海光信息': '688041.SS', '恒瑞医药': '600276.SS',
     }
     hot_list = []
     for name, tk in candidates.items():
@@ -3305,9 +3365,11 @@ st.caption("⚠️ 本终端仅做客观公开数据聚合与可视化，绝不�
 # 第一层：标的搜索栏 + API Key + 生成按钮（V8 全局渲染顺序重排：置于首屏）
 # -------------------------------------------------------------------
 if "selected_ticker" not in st.session_state:
-    st.session_state.selected_ticker = "NVDA"
+    # V10 P8：默认标的改为 A 股核心资产贵州茅台（终端定位 A 股化）
+    st.session_state.selected_ticker = "600519.SS"
 
-set_c1, set_c2, set_c3 = st.columns([3, 2, 2], vertical_alignment="bottom")
+# V10：四栏首屏——搜索框 / API Key / 生成按钮 / 涨跌语义切换
+set_c1, set_c2, set_c3, set_c4 = st.columns([2.8, 1.8, 1.4, 1.5], vertical_alignment="bottom")
 with set_c1:
     user_ticker_raw = st.text_input("🔎 标的代码 / 简称 (例如 AAPL, 600519.SS, 贵州茅台)",
                                     value=st.session_state.selected_ticker)
@@ -3317,6 +3379,10 @@ with set_c2:
     api_key_input = api_key_input_val
 with set_c3:
     generate_btn = st.button("🚀 生成研报", key="btn_main_generate", width="stretch")
+with set_c4:
+    # V10 五：A股红涨绿跌（默认）↔ 国际绿涨红跌 一键切换，全站图表与语义色联动
+    st.toggle("国际配色 (绿涨红跌)", value=False, key="intl_color_mode",
+              help="默认 A 股口径：红=涨、绿=跌；开启后切换为国际口径：绿=涨、红=跌。全站图表即时联动。")
 
 st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
 
@@ -3567,6 +3633,10 @@ def render_macro_calendar():
 """, unsafe_allow_html=True)
             st.markdown("#### 🔗 客观影响链条（规则库生成 · 无方向性判断）")
             st.markdown(f"<div style='background:#171B26; border:1px solid #2B3139; border-radius:12px; padding:16px; font-size:0.9rem; line-height:1.8; color:#D1D4DC;'>{_macro_impact_text(ev['title'])}</div>", unsafe_allow_html=True)
+            # V10：动态关联当前关注标的——事件传导链条落到用户正在研究的标的上
+            _cur_tk = st.session_state.get("selected_ticker", "")
+            if _cur_tk:
+                st.caption(f"🎯 当前关注标的：{_cur_tk} —— 上述传导机制同样作用于该标的所处板块（盈利预期/估值分母/资金面三通道），具体弹性取决于其行业属性与财报披露节奏。")
             st.caption("⚠️ 以上为事件类别的客观传导机制描述，非行情预测；数据请以官方发布为准。")
         else:
             st.info("暂无宏观事件数据。")
@@ -4830,48 +4900,53 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
 
                 recs_df_top = all_data.get('recommendations')
-                if recs_df_top is not None and not recs_df_top.empty:
-                    try:
-                        latest_r = recs_df_top.iloc[0]
-                        vals = [
-                            int(latest_r.get('strongBuy', 0) or 0),
-                            int(latest_r.get('buy', 0) or 0),
-                            int(latest_r.get('hold', 0) or 0),
-                            int(latest_r.get('sell', 0) or 0),
-                            int(latest_r.get('strongSell', 0) or 0)
-                        ]
-                        labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
-                        # V9：语义色对齐 V8 规范（强烈买入=沉稳绿 → 强烈卖出=警示红）
-                        colors = ['#26A69A', '#5DBEAE', '#FBBF24', '#EF8A85', '#EF5350']
-                        df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
-                        df_pie = df_pie[df_pie['Value'] > 0]
-                        total_analysts = int(df_pie['Value'].sum()) if not df_pie.empty else 0
+                # V10 P1：饼图与文字说明 [1,1] 对半均分，垂直居中
+                pie_l, pie_r = st.columns([1, 1], vertical_alignment="center")
+                with pie_l:
+                    if recs_df_top is not None and not recs_df_top.empty:
+                        try:
+                            latest_r = recs_df_top.iloc[0]
+                            vals = [
+                                int(latest_r.get('strongBuy', 0) or 0),
+                                int(latest_r.get('buy', 0) or 0),
+                                int(latest_r.get('hold', 0) or 0),
+                                int(latest_r.get('sell', 0) or 0),
+                                int(latest_r.get('strongSell', 0) or 0)
+                            ]
+                            labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
+                            # V10：跟随全局涨跌语义色（默认 A 股红涨绿跌）
+                            colors = [C_UP, C_UP_DIM, '#FBBF24', C_DOWN_DIM, C_DOWN]
+                            df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
+                            df_pie = df_pie[df_pie['Value'] > 0]
+                            total_analysts = int(df_pie['Value'].sum()) if not df_pie.empty else 0
 
-                        if not df_pie.empty:
-                            fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.62,
-                                               color='Label', color_discrete_map=dict(zip(labels, colors)))
-                            fig_donut.update_layout(
-                                height=230, margin=dict(l=0, r=0, t=8, b=8),
-                                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                showlegend=True,
-                                legend=dict(orientation="h", yanchor="bottom", y=-0.08,
-                                            xanchor="center", x=0.5, font=dict(size=9)),
-                                annotations=[dict(text=f'{total_analysts} 位<br>分析师', x=0.5, y=0.5,
-                                                  font_size=12, showarrow=False,
-                                                  font=dict(color='#D1D4DC'))]
-                            )
-                            fig_donut.update_traces(textinfo='percent', textfont_size=10,
-                                                    hoverinfo='label+value')
-                            st.plotly_chart(fig_donut, width="stretch", config={'displayModeBar': False})
-                        else:
-                            st.info("暂无有效评级人数")
-                    except Exception:
-                        st.info("评级数据解析异常")
-                else:
-                    st.info("暂无评级数据")
+                            if not df_pie.empty:
+                                # V10 P1：hole 提至 0.65，圆环更通透有呼吸感
+                                fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.65,
+                                                   color='Label', color_discrete_map=dict(zip(labels, colors)))
+                                fig_donut.update_layout(
+                                    height=230, margin=dict(l=0, r=0, t=8, b=8),
+                                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                    showlegend=True,
+                                    legend=dict(orientation="h", yanchor="bottom", y=-0.08,
+                                                xanchor="center", x=0.5, font=dict(size=9)),
+                                    annotations=[dict(text=f'{total_analysts} 位<br>分析师', x=0.5, y=0.5,
+                                                      font_size=12, showarrow=False,
+                                                      font=dict(color='#D1D4DC'))]
+                                )
+                                fig_donut.update_traces(textinfo='percent', textfont_size=10,
+                                                        hoverinfo='label+value')
+                                st.plotly_chart(fig_donut, width="stretch", config={'displayModeBar': False})
+                            else:
+                                st.info("暂无有效评级人数")
+                        except Exception:
+                            st.info("评级数据解析异常")
+                    else:
+                        st.info("暂无评级数据")
 
-                st.markdown(
-                    f"""
+                with pie_r:
+                    st.markdown(
+                        f"""
 **第三方目标价历史区间**
 - 🎯 最高: {fmt_price_val(high_p, currency) if high_p else 'N/A'}
 - ⚖️ 均值: {fmt_price_val(mean_p, currency) if mean_p else 'N/A'}
@@ -5118,7 +5193,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 def _m8(v):
                     return f"{v/1e8:,.2f}亿" if isinstance(v, (int, float)) else "数据缺失"
 
-                ex_c1, ex_c2 = st.columns([1, 1.2])
+                # V10 P9：现金流卡片与 EPS 柱状图垂直居中对齐
+                ex_c1, ex_c2 = st.columns([1, 1.2], vertical_alignment="center")
                 with ex_c1:
                     _capex = extra_fin.get('capex')
                     _fcf = extra_fin.get('fcf')
@@ -5278,13 +5354,12 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                         make_card("💵 净利润 (Net Income)", fnum(np_now, money=True), fmt_trend(np_now, np_prev)),
                         make_card("🏢 营业利润 (Operating Income)", fnum(op_inc_now, money=True), fmt_trend(op_inc_now, op_inc_prev)),
                         make_card("🔬 研发投入 (R&D)", fnum(rd_now, money=True), fmt_trend(rd_now, rd_prev)),
-                        make_card("💸 经营性现金流 (Op Cashflow)", fnum(op_cf_now, money=True), fmt_trend(op_cf_now, op_cf_prev)),
+                        make_card("💸 经营性现金流 (OCF)", fnum(op_cf_now, money=True), fmt_trend(op_cf_now, op_cf_prev)),
                         make_card("🌊 自由现金流 (FCF)", fnum(fcf, money=True), '<span class="trend-neutral">—</span>'),
                         make_card("📈 毛利率 (Gross Margin)", fnum(gross_margin, pct=True), '<span class="trend-neutral">—</span>'),
                         make_card("📊 净利率 (Net Margin)", fnum(net_margin, pct=True), '<span class="trend-neutral">—</span>'),
                         make_card("🧬 ROE (净资产收益率)", fnum(roe, pct=True), '<span class="trend-neutral">—</span>'),
-                        make_card("🛡️ 资产负债率 (Debt to Assets)", fnum(debt_to_assets, pct=True), '<span class="trend-neutral">—</span>'),
-                        make_card("⚖️ 负债权益比 (Debt to Equity)", fnum(debt_ratio), '<span class="trend-neutral">—</span>'),
+                        make_card("🛡️ 资产负债率 (Debt/Assets)", fnum(debt_to_assets, pct=True), '<span class="trend-neutral">—</span>'),
                     ])
                     + '</div>'
                 )
