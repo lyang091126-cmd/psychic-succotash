@@ -655,7 +655,19 @@ def fetch_all_data(ticker_input):
             data['info']['regularMarketPrice'] = last_p
             data['info']['currency'] = 'CNY'
 
+    # A股主营业务构成（akshare 真实分部报表）：用于地区/产品线真实占比作图
+    data['main_composition'] = None
     if is_a_share:
+        try:
+            import akshare as ak
+            data['main_composition'] = ak.stock_zygc_em(symbol=pure_code)
+        except Exception:
+            try:
+                import akshare as ak
+                _sfx = 'SH' if pure_code.startswith(('6', '9', '5')) else 'SZ'
+                data['main_composition'] = ak.stock_zygc_em(symbol=f"{_sfx}{pure_code}")
+            except Exception:
+                data['main_composition'] = None
         try:
             import akshare as ak
             data['ak_news'] = ak.stock_news_em(symbol=pure_code)
@@ -961,9 +973,30 @@ def get_real_swot_rows(ticker_input, s_name, info):
     ]
 
 def get_stock_profile(ticker_input, info, mapped_name=""):
-    """根据输入的股票代码/名称，智能推断其真实所属行业、竞品SWOT、产品线结构与机构持仓数据"""
+    """根据输入的股票代码/名称，推断行业与竞品 SWOT；
+    机构持仓/地区收入/产品线结构一律走真实接口，无真实数据即留空（V7 净化）。"""
     tk_upper = str(ticker_input).upper()
     s_name = info.get('shortName') or mapped_name or ticker_input
+
+    # ---------------------------------------------------------------
+    # V7 战役一：机构持仓真实抓取（东财十大股东 / yfinance 13F 级联）
+    # 旧版此处写死了「华夏基金 7.5% / BlackRock 8.2%」等虚构名单与占比，
+    # 已彻底绞杀。抓取失败时保持空列表，由渲染层 st.warning 明示缺失。
+    # ---------------------------------------------------------------
+    _inst_names, _inst_shares, _inst_src, _inst_err = [], [], "", None
+    try:
+        from fundamentals import fetch_institutional_holdings
+        _is_a = str(ticker_input).upper().endswith(('.SS', '.SZ', '.BJ'))
+        _pure = str(ticker_input).split('.')[0]
+        _h = fetch_institutional_holdings(str(ticker_input), _is_a, _pure,
+                                          info.get('sharesOutstanding'))
+        _inst_names = _h.get('names') or []
+        _inst_shares = _h.get('shares') or []
+        _inst_src = _h.get('source') or ""
+        _inst_err = _h.get('error')
+    except Exception as _e:
+        _inst_err = f"{type(_e).__name__}: {_e}"
+
     
     # 动态构建同板块 3 家真实上市公司的 SWOT 矩阵 (彻底告别通配符)
     swot_rows = get_real_swot_rows(ticker_input, s_name, info)
@@ -976,14 +1009,19 @@ def get_stock_profile(ticker_input, info, mapped_name=""):
         'logic_1': f"全球{info.get('sector', '相关领域')}高景气延续，市场需求极度强劲，行业资金持续流入。",
         'logic_2': f"{s_name} 在其细分领域具有显著技术优势，技术壁垒雄厚，市场份额稳步提升。",
         'logic_3': "公司财务状况稳健，自由现金流充沛，高研发投入奠定下一代产品主导地位。",
-        'inst_names': ['华夏基金', '易方达基金', '景顺长城', '香港中央结算 (北向资金)', '社保基金组合'],
-        'inst_shares': [7.5, 6.2, 4.8, 3.9, 2.5],
-        'geo_labels': ['中国大陆 45%', '北美市场 28%', '欧洲中东 15%', '亚太其他 12%'],
-        'geo_values': [45, 28, 15, 12],
-        'prod_labels': ['核心主营业务 65%', '高阶升级产品 20%', '配件与服务 10%', '其他业务 5%'],
-        'prod_values': [65, 20, 10, 5],
+        # V7：一律使用真实抓取结果；地区/产品线拆分属于监管口径分部报表，
+        # 无免费稳定接口可得 → 一律置空，渲染层不画图并 st.warning 明示缺失。
+        'inst_names': _inst_names,
+        'inst_shares': _inst_shares,
+        'inst_source': _inst_src,
+        'inst_error': _inst_err,
+        'geo_labels': [],
+        'geo_values': [],
+        'prod_labels': [],
+        'prod_values': [],
         'swot_rows': swot_rows
     }
+
     
     # 2. 光通信 / 光模块 (新易盛 300502, 中际旭创 300308, 天孚通信 300394 等)
     if any(k in tk_upper or k in str(s_name) for k in ['300502', '300308', '300394', '新易盛', '旭创', '天孚', '光模块', '光通信']):
@@ -992,13 +1030,8 @@ def get_stock_profile(ticker_input, info, mapped_name=""):
         profile['logic_1'] = "全球 AI 大模型算力集群拉动 800G/1.6T 高速光模块需求数倍爆发，行业处于超级景气周期。"
         profile['logic_2'] = f"{s_name} 具备 800G/1.6T 批量交付能力，深绑海外一线算力巨头 (NVIDIA/微软/谷歌)，订单能见度极高。"
         profile['logic_3'] = "公司净利率与毛利率维持历史高位，产能持续向海外拓展，抗宏观风险能力极强。"
-        profile['inst_names'] = ['香港中央结算 (北向)', '华夏上证科创板', '易方达稳健', '景顺长城成长', '广发双擎重仓']
-        profile['inst_shares'] = [9.8, 6.5, 5.2, 4.1, 3.2]
-        profile['geo_labels'] = ['北美与海外算力巨头 68%', '中国大陆 22%', '欧洲与中东 7%', '亚太其他 3%']
-        profile['geo_values'] = [68, 22, 7, 3]
-        profile['prod_labels'] = ['800G / 1.6T 光模块 72%', '400G 及以下光模块 20%', '光器件与光收发件 8%']
-        profile['prod_values'] = [72, 20, 8]
         profile['swot_rows'] = swot_rows
+
 
     # 3. 半导体与 GPU (NVDA, AMD, TSM, INTC, 688256 寒武纪)
     elif any(k in tk_upper or k in str(s_name) for k in ['NVDA', 'AMD', 'TSM', 'INTC', '688256', '英伟达', '寒武纪', '台积电']):
@@ -1007,13 +1040,8 @@ def get_stock_profile(ticker_input, info, mapped_name=""):
         profile['logic_1'] = "AI 算力基础设施投资规模数倍上行，生成式 AI 爆发驱动 GPU 芯片需求持续超越供给上限。"
         profile['logic_2'] = f"{s_name} 在 GPU 架构与 CUDA 软件生态拥有强大护城河，20年积累使开发者生态无法轻易被迁移。"
         profile['logic_3'] = "自由现金流与营业利润大幅扩张，毛利率保持 70%+ 的行业绝对统治级水平。"
-        profile['inst_names'] = ['BlackRock Inc.', 'Vanguard Group', 'State Street', 'Fidelity Management', 'Geode Capital']
-        profile['inst_shares'] = [8.2, 7.8, 4.2, 3.5, 2.3]
-        profile['geo_labels'] = ['美洲 45%', '欧洲中东 22%', '中国区 18%', '亚太其他 15%']
-        profile['geo_values'] = [45, 22, 18, 15]
-        profile['prod_labels'] = ['Data Center 算力芯片 76%', 'Gaming 游戏显卡 14%', 'Automotive 自动驾驶 6%', 'ProVis 4%']
-        profile['prod_values'] = [76, 14, 6, 4]
         profile['swot_rows'] = swot_rows
+
 
     # 4. 消费电子 (AAPL, 1810.HK 小米, 002475 立讯精密)
     elif any(k in tk_upper or k in str(s_name) for k in ['AAPL', '1810', '002475', '苹果', '小米', '立讯']):
@@ -1022,13 +1050,8 @@ def get_stock_profile(ticker_input, info, mapped_name=""):
         profile['logic_1'] = "端侧 AI (Apple Intelligence / AI Phone) 开启智能终端新一轮超级换机周期。"
         profile['logic_2'] = f"{s_name} 在软硬件闭环与高端品牌溢价方面拥有极高壁垒，用户黏性与留存率极强。"
         profile['logic_3'] = "服务业务 (Services) 占比提升拉高整体毛利率，现金流充沛支持高额股票回购与派息。"
-        profile['inst_names'] = ['Vanguard Group', 'BlackRock Inc.', 'Berkshire Hathaway', 'State Street', 'Geode Capital']
-        profile['inst_shares'] = [8.5, 6.9, 5.8, 3.8, 2.1]
-        profile['geo_labels'] = ['美洲市场 42%', '欧洲市场 24%', '大中华区 19%', '亚太其他 15%']
-        profile['geo_values'] = [42, 24, 19, 15]
-        profile['prod_labels'] = ['旗舰手机 (iPhone) 52%', '软件与订阅服务 22%', '可穿戴设备 (Watch/AirPods) 10%', 'Mac & iPad 16%']
-        profile['prod_values'] = [52, 22, 10, 16]
         profile['swot_rows'] = swot_rows
+
 
     # 5. 白酒与消费 (600519 贵州茅台, 五粮液)
     elif any(k in tk_upper or k in str(s_name) for k in ['600519', '000858', '茅台', '五粮液']):
@@ -1037,13 +1060,8 @@ def get_stock_profile(ticker_input, info, mapped_name=""):
         profile['logic_1'] = "高端白酒具备强社交属性与金融属性，消费升级趋势下品牌集中度持续提升。"
         profile['logic_2'] = f"{s_name} 拥有独一无二的品牌护城河与不可复制的产区环境，定价权极其突出。"
         profile['logic_3'] = "经营性现金流极其强劲，无有息负债，分红率与 ROE 长期保持行业顶尖水平。"
-        profile['inst_names'] = ['香港中央结算 (北向)', '易方达蓝筹精选', '招商中证白酒', '华夏上证50', '景顺长城鼎益']
-        profile['inst_shares'] = [6.8, 4.5, 3.9, 2.8, 2.1]
-        profile['geo_labels'] = ['中国大陆市场 94%', '海外与出口市场 6%']
-        profile['geo_values'] = [94, 6]
-        profile['prod_labels'] = ['核心高端酒 88%', '系列酒与衍生产品 12%']
-        profile['prod_values'] = [88, 12]
         profile['swot_rows'] = swot_rows
+
 
     return profile
 
@@ -1506,6 +1524,15 @@ if generate_btn:
             </div>
             """, unsafe_allow_html=True)
 
+            _inm = st_prof.get('inst_names') or []
+            _ins = st_prof.get('inst_shares') or []
+            if len(_inm) >= 2:
+                _chip_line = f"- **机构筹码博弈**：{_inm[0]}、{_inm[1]} 等头部机构位列前十大股东（真实披露数据）。"
+            elif len(_inm) == 1:
+                _chip_line = f"- **机构筹码博弈**：{_inm[0]} 为已披露的主要股东（真实披露数据）。"
+            else:
+                _chip_line = "- **机构筹码博弈**：⚠️ 监管未披露或接口限流，真实股东数据缺失，本节不做推断。"
+
             c1_a, c1_b = st.columns([1.05, 0.95])
             with c1_a:
                 st.markdown(f"""### 1.1 三大核心投资逻辑
@@ -1514,22 +1541,32 @@ if generate_btn:
 - **公司财务与成长**：{st_prof['logic_3']}
 
 ### 1.2 机构筹码博弈与分析师一致预期总结
-- **机构筹码博弈**：{st_prof['inst_names'][0]}、{st_prof['inst_names'][1]} 等头部机构重仓持有，筹码锁仓度较高。
-- **分析师一致预期**：主流卖方机构普遍给予「强烈买入/跑赢大盘」评级，目标价均值具备显著向上空间。""")
+{_chip_line}
+- **分析师一致预期**：以上方 yfinance / 东财一致预期接口返回的真实目标价与评级分布为准。""")
 
             with c1_b:
-                fig_inst = go.Figure(go.Bar(
-                    x=st_prof['inst_shares'], y=st_prof['inst_names'], orientation='h',
-                    marker_color=['#00b865', '#38bdf8', '#fbbf24', '#a855f7', '#94a3b8'],
-                    text=[f"{v}%" for v in st_prof['inst_shares']], textposition='auto'
-                ))
-                fig_inst.update_layout(
-                    height=240, template='plotly_dark',
-                    margin=dict(l=10, r=10, t=35, b=10),
-                    title_text=f"🏛️ {s_title_name} 最新 Top 5 机构持仓比例 (%)",
-                    yaxis=dict(autorange="reversed")
-                )
-                st.plotly_chart(fig_inst, use_container_width=True)
+                if _inm and _ins:
+                    _palette = ['#00E676', '#00b865', '#38bdf8', '#8B93A7', '#64748B',
+                                '#00E676', '#00b865', '#38bdf8', '#8B93A7', '#64748B']
+                    fig_inst = go.Figure(go.Bar(
+                        x=_ins, y=_inm, orientation='h',
+                        marker_color=_palette[:len(_inm)],
+                        text=[f"{v}%" for v in _ins], textposition='auto'
+                    ))
+                    fig_inst.update_layout(
+                        height=240, template='plotly_dark',
+                        margin=dict(l=10, r=10, t=35, b=10),
+                        title_text=f"🏛️ {s_title_name} 前十大股东/机构持股比例 (%)",
+                        yaxis=dict(autorange="reversed")
+                    )
+                    st.plotly_chart(fig_inst, use_container_width=True)
+                    if st_prof.get('inst_source'):
+                        st.caption(f"数据来源：{st_prof['inst_source']}")
+                else:
+                    st.warning("监管未披露或接口限流，真实机构持仓数据缺失（本站不使用虚构股东名单占位）。")
+                    if st_prof.get('inst_error'):
+                        st.caption(f"接口诊断：{st_prof['inst_error']}")
+
 
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
@@ -1595,7 +1632,8 @@ if generate_btn:
                 st.markdown(f"""### 🏢 三、{s_title_name} 主营业务剖析与核心护城河
 ### 3.1 主营业务与产品线结构拆解
 - **主营业务**：{st_prof['sub_sector']} 研发、生产与销售。
-- **产品线结构**：{st_prof['prod_labels'][0]}（占比最高）、{st_prof['prod_labels'][1]}及其他衍生服务。
+- **产品线结构**：详见右侧「主营构成」真实分部报表饼图（东方财富最新报告期披露口径，非估算）。
+
 
 ### 3.2 核心技术壁垒与护城河
 - **核心技术**：高阶产品封装测试工艺、自研核心模块算法与质量控制体系。
@@ -1610,33 +1648,83 @@ if generate_btn:
                 st.markdown(swot_md)
 
             with c3_b:
-                # P1：1. 地区分布饼图（放大 50%：height=350）
-                fig_geo = go.Figure(data=[go.Pie(
-                    labels=st_prof['geo_labels'], values=st_prof['geo_values'],
-                    marker_colors=['#00b865', '#38bdf8', '#fbbf24', '#a855f7']
-                )])
-                fig_geo.update_layout(
-                    height=350, template='plotly_dark',
-                    margin=dict(l=10, r=10, t=35, b=35),
-                    title_text=f"🌐 {s_title_name} 主营业务收入地区分布",
-                    legend=dict(orientation="h", y=-0.15, font=dict(size=12), x=0.5, xanchor="center")
-                )
-                st.plotly_chart(fig_geo, use_container_width=True)
+                # V7 战役一：地区/产品线收入拆分一律取自真实分部报表（东财「主营构成」）。
+                # 旧版此处用「中国大陆 45% / 800G 光模块 72%」等虚构比例画饼图，已彻底绞杀。
+                # 现改为：解析 akshare stock_zygc_em 最新报告期真实占比，无真实数据才提示缺失。
+                _geo_l, _geo_v, _pro_l, _pro_v = [], [], [], []
+                _seg_src = ""
+                _main_comp = all_data.get('main_composition')
+                try:
+                    if _main_comp is not None and not _main_comp.empty and '分类类型' in _main_comp.columns:
+                        _mc = _main_comp.copy()
+                        # 仅取最新报告期，避免多期数据叠加导致占比失真
+                        if '报告期' in _mc.columns:
+                            _latest = sorted(_mc['报告期'].astype(str).unique())[-1]
+                            _mc = _mc[_mc['报告期'].astype(str) == _latest]
+                            _seg_src = f"东方财富主营构成 · 报告期 {_latest}"
+                        else:
+                            _seg_src = "东方财富主营构成"
 
-                st.markdown('<div style="height: 1.5rem;"></div>', unsafe_allow_html=True)
+                        _ratio_col = next((c for c in ['收入比例', '主营收入比例'] if c in _mc.columns), None)
+                        _item_col = next((c for c in ['主营构成', '项目名称'] if c in _mc.columns), None)
 
-                # P1：2. 产品线结构环形图（放大 50%：height=350）
-                fig_donut = go.Figure(data=[go.Pie(
-                    labels=st_prof['prod_labels'], values=st_prof['prod_values'], hole=.45,
-                    marker_colors=['#00b865', '#34d399', '#f59e0b', '#8b5cf6']
-                )])
-                fig_donut.update_layout(
-                    height=350, template='plotly_dark',
-                    margin=dict(l=10, r=10, t=35, b=35),
-                    title_text=f"📊 {s_title_name} 主营业务产品线收入结构",
-                    legend=dict(orientation="h", y=-0.15, font=dict(size=12), x=0.5, xanchor="center")
-                )
-                st.plotly_chart(fig_donut, use_container_width=True)
+                        if _ratio_col and _item_col:
+                            _mc['_pct'] = pd.to_numeric(
+                                _mc[_ratio_col].astype(str).str.replace('%', '', regex=False),
+                                errors='coerce')
+                            _mc = _mc.dropna(subset=['_pct'])
+                            _mc = _mc[_mc['_pct'] > 0]
+
+                            _df_reg = _mc[_mc['分类类型'].astype(str).str.contains('地区|区域', na=False)]
+                            _df_pro = _mc[_mc['分类类型'].astype(str).str.contains('产品|行业', na=False)]
+
+                            if not _df_reg.empty:
+                                _df_reg = _df_reg.nlargest(8, '_pct')
+                                _geo_l = _df_reg[_item_col].astype(str).tolist()
+                                _geo_v = [round(float(v), 2) for v in _df_reg['_pct']]
+                            if not _df_pro.empty:
+                                _df_pro = _df_pro.nlargest(8, '_pct')
+                                _pro_l = _df_pro[_item_col].astype(str).tolist()
+                                _pro_v = [round(float(v), 2) for v in _df_pro['_pct']]
+                except Exception as _seg_e:
+                    _seg_src = f"解析异常：{type(_seg_e).__name__}"
+
+                if _geo_l and _geo_v:
+                    fig_geo = go.Figure(data=[go.Pie(
+                        labels=_geo_l, values=_geo_v,
+                        marker_colors=['#00E676', '#00b865', '#8B93A7', '#64748B']
+                    )])
+                    fig_geo.update_layout(
+                        height=350, template='plotly_dark',
+                        margin=dict(l=10, r=10, t=35, b=35),
+                        title_text=f"🌐 {s_title_name} 主营业务收入地区分布",
+                        legend=dict(orientation="h", y=-0.15, font=dict(size=12), x=0.5, xanchor="center")
+                    )
+                    st.plotly_chart(fig_geo, use_container_width=True)
+                    if _seg_src:
+                        st.caption(f"数据来源：{_seg_src}（真实披露口径）")
+                else:
+                    st.warning("🌐 分地区收入拆分：监管未披露或接口限流，真实数据缺失（拒绝使用虚构占比作图）。")
+
+                st.markdown('<div style="height: 1.0rem;"></div>', unsafe_allow_html=True)
+
+                if _pro_l and _pro_v:
+                    fig_donut = go.Figure(data=[go.Pie(
+                        labels=_pro_l, values=_pro_v, hole=.45,
+                        marker_colors=['#00E676', '#00b865', '#8B93A7', '#64748B']
+                    )])
+                    fig_donut.update_layout(
+                        height=350, template='plotly_dark',
+                        margin=dict(l=10, r=10, t=35, b=35),
+                        title_text=f"📊 {s_title_name} 主营业务产品线收入结构",
+                        legend=dict(orientation="h", y=-0.15, font=dict(size=12), x=0.5, xanchor="center")
+                    )
+                    st.plotly_chart(fig_donut, use_container_width=True)
+                    if _seg_src:
+                        st.caption(f"数据来源：{_seg_src}（真实披露口径）")
+                else:
+                    st.warning("📊 产品线收入结构：监管未披露或接口限流，真实数据缺失（拒绝使用虚构占比作图）。")
+
 
             st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
 
