@@ -1445,6 +1445,26 @@ def fetch_national_team_etfs():
         df = df.sort_values(by='成交额(亿元)', ascending=False)
     return df
 
+def _fetch_with_timeout(fn, args=(), kwargs=None, timeout_s: int = 25, default=None):
+    """V8 修复：akshare 等外部接口的裸 HTTP 请求没有超时，周末/接口维护时
+    会无限挂起，把整页后半部分（Treemap/CFFEX/众包/研报区）全部堵死。
+    用工作线程 + 硬超时兜底：超时即返回 default，页面继续渲染。
+    注意：本函数绝不能加 @st.cache_data——fn 参数是函数对象，不可哈希。"""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+    # 注意：不能用 with 语句——退出时会 shutdown(wait=True) 等待挂死线程，
+    # 等于没超时。必须 shutdown(wait=False) 立即返回，卡死的线程留在后台。
+    _pool = ThreadPoolExecutor(max_workers=1)
+    _fut = _pool.submit(fn, *args, **(kwargs or {}))
+    try:
+        _r = _fut.result(timeout=timeout_s)
+        _pool.shutdown(wait=False)
+        return _r
+    except _FutTimeout:
+        _fut.cancel()
+        _pool.shutdown(wait=False)
+        return default
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_sector_fund_flow():
     """Fetch real-time sector fund flow from akshare"""
@@ -1685,7 +1705,8 @@ def render_macro_capital_board():
         st.markdown("### 🗺️ 全市场行业主力资金净流入热力图 (Treemap)")
         st.caption("方块大小代表资金活跃度(净额绝对值)，红色代表净流入，绿色代表净流出。点击可下钻或悬停查看详情。")
         
-        df_sector = fetch_sector_fund_flow()
+        # V8 修复：加 25s 硬超时，防止同花顺接口周末无响应时整页挂死
+        df_sector = _fetch_with_timeout(fetch_sector_fund_flow, timeout_s=25, default=pd.DataFrame())
         if not df_sector.empty and '行业' in df_sector.columns:
             # P5: 过滤掉净额绝对值过小的尾部行业，只保留主力核心大行业，避免极小区块挤压字号而无法显示文字
             df_sector = df_sector.sort_values(by='绝对净流入', ascending=False)
@@ -1771,7 +1792,11 @@ def render_macro_capital_board():
             for offset in range(7):
                 t_date = (datetime.datetime.now() - datetime.timedelta(days=offset)).strftime("%Y%m%d")
                 try:
-                    res_dict = ak.get_cffex_rank_table(date=t_date)
+                    # V8 修复：CFFEX 单日数据抓取加 20s 硬超时（非交易日/周末
+                    # 接口不响应时原会无限挂起，7 天回溯循环放大为整页卡死）
+                    res_dict = _fetch_with_timeout(
+                        ak.get_cffex_rank_table, kwargs={"date": t_date},
+                        timeout_s=20, default=None)
                     if res_dict:
                         valid = False
                         for k, df in res_dict.items():
@@ -2331,9 +2356,16 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
             st.session_state.selected_ticker = resolved_target
             st.rerun()
             
-        pred_rev = st.number_input(f"预测营业收入 ({unit_lbl})", min_value=0.0, value=float(def_rev) if def_rev > 0 else 100.0, step=10.0, key="calc_pred_rev")
-        pred_net_inc = st.number_input(f"预测净利润 ({unit_lbl})", min_value=0.0, value=float(def_net_inc) if def_net_inc > 0 else 15.0, step=2.0, key="calc_pred_net_inc")
-        pred_net_assets = st.number_input(f"预测净资产 ({unit_lbl})", min_value=0.0, value=float(def_net_assets) if def_net_assets > 0 else 60.0, step=5.0, key="calc_pred_net_assets")
+        # V8 修复：key 已在 session_state 设初值（上方换股重置块）的控件不能再
+        # 传 value=，否则 Streamlit 抛 StreamlitAPIException，整个众包区中断。
+        # 初值一律走 session_state.setdefault，控件本身不传默认值。
+        for _k, _v in [("calc_pred_rev", float(def_rev) if def_rev > 0 else 100.0),
+                       ("calc_pred_net_inc", float(def_net_inc) if def_net_inc > 0 else 15.0),
+                       ("calc_pred_net_assets", float(def_net_assets) if def_net_assets > 0 else 60.0)]:
+            st.session_state.setdefault(_k, _v)
+        pred_rev = st.number_input(f"预测营业收入 ({unit_lbl})", min_value=0.0, step=10.0, key="calc_pred_rev")
+        pred_net_inc = st.number_input(f"预测净利润 ({unit_lbl})", min_value=0.0, step=2.0, key="calc_pred_net_inc")
+        pred_net_assets = st.number_input(f"预测净资产 ({unit_lbl})", min_value=0.0, step=5.0, key="calc_pred_net_assets")
         
     with calc_c2:
         st.write("#### 📊 估值水位差 (Gap Analysis)")
@@ -3344,7 +3376,12 @@ try:
     # [已内联] from macro_capital import render_macro_capital_board
     render_macro_capital_board()
 except Exception as e:
-    st.warning("当前时段接口维护，资金流数据暂缓更新")
+    # V8 诊断修复：原版静默吞掉异常，导致 Treemap 之后的功能区（CFFEX 等）
+    # 无声消失且无从排查。现在写入服务器日志，页面上仍保持克制的降级提示。
+    import traceback as _tb
+    print("[macro_board ERROR]", repr(e))
+    _tb.print_exc()
+    st.warning(f"宏观资金面模块暂时异常: {type(e).__name__}")
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
