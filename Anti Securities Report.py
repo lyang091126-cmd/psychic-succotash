@@ -14,6 +14,21 @@ from openai import OpenAI
 
 import importlib
 
+# ============================================================================
+# V10.1 全局网络超时护栏：requests 默认 20s 超时
+# akshare 全系列接口不传 timeout，接口挂起时会让 Streamlit 脚本无限阻塞
+# （实测：周末 stock_info_a_code_name 的 SSL 读挂起导致整页卡死在研报区）。
+# 本补丁仅对未显式指定 timeout 的请求生效，不影响自带超时的库。
+# ============================================================================
+import requests as _rq_mod
+
+def _request_default_timeout(self, method, url, **kwargs):
+    kwargs.setdefault("timeout", 20)
+    return _rq_mod.Session.__orig_request__(self, method, url, **kwargs)
+
+_rq_mod.Session.__orig_request__ = _rq_mod.Session.request
+_rq_mod.Session.request = _request_default_timeout
+
 
 # ============================================================================
 # ▼▼▼ 内联模块：fundamentals.py  （原独立文件，V7 单文件版已合并至此）
@@ -2264,7 +2279,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
         
     st.markdown("---")
     st.markdown(f"## 🧮 【{ticker}】估值模型及财务推演计算器")
-    st.markdown("<div style='font-size:0.85rem; opacity:0.8; margin-bottom:1rem;'>基于同行业估值水平与未来业绩预期，全自动多维推演并展示个股相对合理股价与估值水位差。</div>", unsafe_allow_html=True)
+    st.markdown("<div style='background:rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px 18px; font-size:0.88rem; line-height:1.8; color:#D1D4DC; margin-bottom:1rem;'>基于同行业估值水平与未来业绩预期，全自动多维推演并展示个股相对合理股价与估值水位差。</div>", unsafe_allow_html=True)
     
     # 提取客观基础财务指标
     info = all_data.get('info', {}) if all_data else {}
@@ -2894,6 +2909,62 @@ div[data-testid="stTabs"] button {{
     text-align: center !important;
     font-weight: bold !important;
 }}
+
+/* V10.1 排版系统：终结"文字墙"——标题带结构线、段落列表拉开行距、
+   分割线渐变、数字输入器暗色卡片化，全站统一呼吸感与纵向节奏 */
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {{
+    margin-top: 1.5em !important;
+    margin-bottom: 0.65em !important;
+    letter-spacing: 0.3px;
+    line-height: 1.35;
+}}
+.stMarkdown h2 {{
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}}
+.stMarkdown h3 {{
+    padding-left: 11px;
+    border-left: 3px solid #4B9FFF;
+}}
+.stMarkdown p {{
+    line-height: 1.78 !important;
+    margin-bottom: 0.75em !important;
+}}
+.stMarkdown ul, .stMarkdown ol {{
+    margin: 0.5em 0 0.9em 0 !important;
+    padding-left: 1.45em !important;
+}}
+.stMarkdown li {{
+    line-height: 1.78 !important;
+    margin-bottom: 0.5em !important;
+}}
+.stMarkdown hr {{
+    border: none !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent) !important;
+    margin: 1.7em 0 !important;
+}}
+body [data-testid="stNumberInput"] {{
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 4px 10px;
+}}
+body [data-testid="stNumberInput"] label {{
+    color: #8B93A7 !important;
+    font-size: 0.82rem !important;
+}}
+/* 说明性 caption 与正文拉开层次 */
+.stCaption, p.caption {{
+    line-height: 1.6 !important;
+    margin-top: 0.4em !important;
+}}
+/* V10.1 对齐系统：同排栏目等高拉伸，上下沿横向对齐；
+   栏内垂直顶部对齐，杜绝高低参差 */
+div[data-testid="stHorizontalBlock"] {{ align-items: stretch; }}
+div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
+    display: flex; flex-direction: column; justify-content: flex-start;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2965,7 +3036,10 @@ def resolve_ticker(raw_input):
     if not raw.isdigit() and len(raw) >= 2:
         try:
             import akshare as ak
-            df_codes = ak.stock_info_a_code_name()
+            # V10.1：该接口无超时且周末/限流时会无限阻塞（实测挂起整页），
+            # 套 15s 硬超时兜底；失败直接走后续纯数字补全/原样返回分支
+            df_codes = _fetch_with_timeout(ak.stock_info_a_code_name,
+                                           timeout_s=15, default=None)
             if df_codes is not None and not df_codes.empty:
                 match = df_codes[df_codes['name'].str.contains(raw, case=False, na=False)]
                 if not match.empty:
@@ -2996,7 +3070,7 @@ def resolve_ticker(raw_input):
 st.markdown("""
 <style>
     .event-expectation { font-size: 0.82rem; opacity: 0.85; color: #fbbf24; }
-    .event-analysis-title { font-weight: 600; font-size: 0.85rem; color: #38bdf8; margin-bottom: 0.2rem; }
+    .event-analysis-title { font-weight: 600; font-size: 0.85rem; color: #4B9FFF; margin-bottom: 0.2rem; }
     .event-analysis-text { font-size: 0.85rem; opacity: 0.88; line-height: 1.5; color: var(--text-color, #e2e8f0); }
 
     /* 4 宫格分析师目标价卡片 */
@@ -4141,6 +4215,8 @@ def analyze_kline_and_chanlun(df):
     trend_status = "震荡上行/主升阶段" if pct_1y > 15 else ("震荡下行/回调阶段" if pct_1y < -15 else "近1年宽幅箱体震荡")
 
     segments = []
+    # V10.1：波段图标跟随涨跌语义切换（A股默认红涨绿跌）
+    _up_ico, _dn_ico = ('🔴', '🟢') if not st.session_state.get("intl_color_mode", False) else ('🟢', '🔴')
     if len(bottom_fractals) > 0 and len(top_fractals) > 0:
         all_points = [(d, p, 'top') for d, p in top_fractals] + [(d, p, 'bottom') for d, p in bottom_fractals]
         all_points.sort(key=lambda x: x[0])
@@ -4148,19 +4224,19 @@ def analyze_kline_and_chanlun(df):
             d1, p1, t1 = all_points[i]
             d2, p2, t2 = all_points[i+1]
             if t1 == 'bottom' and t2 == 'top' and (p2 - p1) / p1 > 0.10:
-                segments.append(f"🟢 上涨: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [+{(p2-p1)/p1*100:.1f}%]")
+                segments.append(f"{_up_ico} 上涨: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [+{(p2-p1)/p1*100:.1f}%]")
             elif t1 == 'top' and t2 == 'bottom' and (p1 - p2) / p1 > 0.10:
-                segments.append(f"🔴 下跌: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [{(p1-p2)/p1*-100:.1f}%]")
+                segments.append(f"{_dn_ico} 下跌: {d1[5:]} ({p1:.2f}) ➔ {d2[5:]} ({p2:.2f}) [{(p1-p2)/p1*-100:.1f}%]")
     
     segments = segments[-5:]
     segments_html = "".join([f"<div style='background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:5px; margin-bottom:5px; font-size:0.85rem;'>{s}</div>" for s in segments]) if segments else "<div style='opacity:0.6'>近半年未见超10%波段</div>"
 
-    html = f"""<div style="background:rgba(20,24,33,0.5); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.05);">
-<h4 style="color:#38bdf8; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
+    html = f"""<div style="background:rgba(30, 41, 59, 0.7); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);">
+<h4 style="color:#4B9FFF; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
 <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
 <div style="font-size:0.8rem; color:#94a3b8;">最新收盘 / 趋势</div>
-<div style="font-size:1rem; font-weight:600; color:{'#ef4444' if pct_1y>=0 else '#00b865'};">{recent_close:.2f} ({pct_1y:+.2f}%)</div>
+<div style="font-size:1rem; font-weight:600; color:{C_UP if pct_1y>=0 else C_DOWN};">{recent_close:.2f} ({pct_1y:+.2f}%)</div>
 <div style="font-size:0.8rem;">{trend_status}</div>
 </div>
 <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
@@ -4175,11 +4251,11 @@ def analyze_kline_and_chanlun(df):
 <div style="background:rgba(255,255,255,0.03); padding:10px; border-radius:8px;">
 <div style="font-size:0.8rem; color:#94a3b8;">MACD / 辅助判断</div>
 <div style="font-size:1rem; font-weight:600;">{macd_recent:.3f}</div>
-<div style="font-size:0.75rem; color:{'#ef4444' if '底背驰' in divergence else '#00b865' if '顶背驰' in divergence else '#94a3b8'}; margin-top:3px;">{divergence}</div>
+<div style="font-size:0.75rem; color:{C_UP if '底背驰' in divergence else C_DOWN if '顶背驰' in divergence else '#94a3b8'}; margin-top:3px;">{divergence}</div>
 </div>
 </div>
 <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
-<span style="background:rgba(56,189,248,0.1); color:#38bdf8; padding:4px 8px; border-radius:4px; font-size:0.8rem;">均线支撑: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}</span>
+<span style="background:rgba(56,189,248,0.1); color:#4B9FFF; padding:4px 8px; border-radius:4px; font-size:0.8rem;">均线支撑: MA20={df['MA20'].iloc[-1]:.2f}, MA50={df['MA50'].iloc[-1]:.2f}</span>
 <span style="background:rgba(251,191,36,0.1); color:#fbbf24; padding:4px 8px; border-radius:4px; font-size:0.8rem;">{rsi_status}</span>
 </div>
 <div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin-bottom:10px;">📉 波段起止明细 (最近5条)</div>
@@ -4501,11 +4577,11 @@ def build_chain_html(info, ticker):
     # 无数据时：明确提示，彻底禁止通用占位描述
     if chain is None:
         industry_display = industry or '未获取到行业信息'
-        return f"""<div style="margin:1.5rem 0; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05);">
-<div style="text-align:center; font-size:1.15rem; font-weight:700; color:#38bdf8; margin-bottom:1rem;">🌐 {name} 产业链生态定位图谱</div>
+        return f"""<div style="margin:1.5rem 0; padding:25px; background:rgba(30, 41, 59, 0.7); border-radius:16px; border:1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);">
+<div style="text-align:center; font-size:1.15rem; font-weight:700; color:#4B9FFF; margin-bottom:1rem;">🌐 {name} 产业链生态定位图谱</div>
 <div style="text-align:center; padding:2rem; color:#94a3b8; font-size:0.95rem;">
 <div style="font-size:2rem; margin-bottom:1rem;">📭</div>
-<div style="margin-bottom:0.5rem;">暂无 <b style="color:#38bdf8;">{name} ({ticker})</b> 的专属产业链数据</div>
+<div style="margin-bottom:0.5rem;">暂无 <b style="color:#4B9FFF;">{name} ({ticker})</b> 的专属产业链数据</div>
 <div style="font-size:0.82rem; opacity:0.7;">行业: {industry_display} | 板块: {sector or '未获取'}</div>
 <div style="font-size:0.82rem; opacity:0.6; margin-top:1rem;">本站严格遵循"无专属数据不展示"原则，绝不使用通用描述占位。</div>
 </div>
@@ -4514,8 +4590,8 @@ def build_chain_html(info, ticker):
     up_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['up']])
     down_li = ''.join([f'<li style="margin-bottom:6px;">{c}</li>' for c in chain['down']])
 
-    return f"""<div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(20,24,33,0.6); border-radius:16px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-<div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#38bdf8; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
+    return f"""<div style="margin:1.5rem 0; width:100%; padding:25px; background:rgba(30, 41, 59, 0.7); border-radius:16px; border:1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+<div style="text-align:center; font-size:1.15rem; font-weight:700; margin-bottom:1.5rem; color:#4B9FFF; letter-spacing:1px;">🌐 {name} 产业链生态定位图谱</div>
 <div class="chain-grid">
 <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">
 <div style="font-size:0.95rem; font-weight:700; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:10px; margin-bottom:15px; display:flex; align-items:center; gap:8px;"><span>🏭</span> <span>上游 (Upstream)</span></div>
@@ -4523,7 +4599,7 @@ def build_chain_html(info, ticker):
 </div>
 <div class="chain-arrow">➔</div>
 <div style="background:linear-gradient(145deg, rgba(56,189,248,0.15) 0%, rgba(14,165,233,0.05) 100%); border:1px solid rgba(56,189,248,0.4); border-radius:12px; padding:20px; box-shadow:0 8px 25px rgba(56,189,248,0.15); display:flex; flex-direction:column; justify-content:center; align-items:center;">
-<div style="font-size:0.95rem; font-weight:700; color:#38bdf8; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
+<div style="font-size:0.95rem; font-weight:700; color:#4B9FFF; margin-bottom:12px; letter-spacing:1px;">⚙️ 中游 (Midstream)</div>
 <div style="font-size:1.4rem; font-weight:900; color:#ffffff; text-align:center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">{name}</div>
 <div style="font-size:0.88rem; opacity:0.9; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); padding:6px 12px; border-radius:6px;">{chain['mid_role']}</div>
 </div>
@@ -4979,7 +5055,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
-                st.markdown(f"### 🏢 {s_title_name} 主营业务构成 <span style='font-size:0.75rem; opacity:0.6;'>数据来源标注见下</span>", unsafe_allow_html=True)
+                st.markdown(f"### 🏢 {s_title_name} 主营业务构成", unsafe_allow_html=True)
+                st.caption("数据来源标注见下方明细")
                 main_comp = all_data.get('main_composition')
                 if main_comp is not None and not main_comp.empty:
                     # ==== A 股：akshare 主营构成数据 ====
@@ -5100,7 +5177,7 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                             if sector_val: meta_items.append(f"<b>板块:</b> {sector_val}")
                             if industry_val: meta_items.append(f"<b>细分行业:</b> {industry_val}")
                             if employees: meta_items.append(f"<b>全职员工:</b> {employees:,}" if isinstance(employees, int) else f"<b>全职员工:</b> {employees}")
-                            if website: meta_items.append(f"<b>官网:</b> <a href='{website}' style='color:#38bdf8;'>{website}</a>")
+                            if website: meta_items.append(f"<b>官网:</b> <a href='{website}' style='color:#4B9FFF;'>{website}</a>")
                             meta_html = " &nbsp;|&nbsp; ".join(meta_items)
                             st.markdown(f'<div style="background:rgba(0,242,254,0.05); padding:10px 15px; border-radius:8px; border:1px solid rgba(0,242,254,0.15); font-size:0.85rem; color:#94a3b8; margin-top:0.8rem;">{meta_html}</div>', unsafe_allow_html=True)
                             us_biz_shown = True
@@ -5114,7 +5191,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown("---")
                 c4_a, c4_b = st.columns([0.95, 1.05])
                 with c4_a:
-                    st.markdown("### 📈 缠论技术面数据摘要 <span style='font-size:0.75rem; opacity:0.6;'>⚠️ 简化版分型/中枢识别+RSI+BOLL，非买卖点建议</span>", unsafe_allow_html=True)
+                    st.markdown("### 📈 缠论技术面数据摘要", unsafe_allow_html=True)
+                    st.caption("⚠️ 简化版分型/中枢识别 + RSI + BOLL，非买卖点建议")
                     chanlun_text_ui = analyze_kline_and_chanlun(all_data['hist_1y']) if all_data and all_data.get('hist_1y') is not None else "暂无K线数据"
                     st.markdown(chanlun_text_ui, unsafe_allow_html=True)
                     st.caption("📌 以上数据均基于真实K线计算得出，非AI编造。")
@@ -5565,7 +5643,9 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             # =====================================================================
             with tab4:
                 st.markdown("---")
-                st.markdown("## 📰 近期新闻事件性质客观分类 <span style='font-size:0.72rem; opacity:0.6;'>基于新闻标题关键词的客观事件性质分类，非对股价走势的预测</span>", unsafe_allow_html=True)
+                # V10.1：标题与副标题分两行，杜绝挤成一行
+                st.markdown("## 📰 近期新闻事件性质客观分类", unsafe_allow_html=True)
+                st.caption("基于新闻标题关键词的客观事件性质分类，非对股价走势的预测")
                 n_col1, n_col2 = st.columns(2)
                 with n_col1:
                     st.markdown("#### 🟢 正面性质事件描述")
