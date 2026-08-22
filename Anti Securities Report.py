@@ -1149,9 +1149,12 @@ def build_pro_kline_chart(df, ticker, height=640):
 
     fig.update_layout(
         height=height, template="plotly_dark", xaxis_rangeslider_visible=False,
-        margin=dict(l=8, r=8, t=28, b=8), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        # V9 P3：顶部 60px 给标题呼吸空间；底部 40px 容纳下移的图例
+        margin=dict(l=8, r=8, t=60, b=40), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
         hovermode="x unified", bargap=0.05,
-        legend=dict(orientation="h", y=1.06, x=0, font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
+        # V9 P3：图例从顶部(y=1.06, 与标题/副图标题重叠)移到图表正下方
+        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5,
+                    font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
         title=dict(text=f"{ticker} · 多周期均线 / 量能 / MACD / RSI 同屏", font=dict(size=12), x=0.01),
     )
     for r, lab in [(1, "价格"), (2, "量"), (3, "MACD"), (4, "RSI")]:
@@ -1287,10 +1290,11 @@ def build_eps_surprise_chart(rows, height=300):
                          hovertemplate="实际 %{y:.3f}<extra></extra>"))
     fig.update_layout(
         height=height, template="plotly_dark", barmode="group",
-        margin=dict(l=8, r=8, t=34, b=8), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
-        title=dict(text="盈利惊喜历史 · EPS 预期 vs 实际（Beat / Miss）",
-                   font=dict(size=12), x=0.01),
-        legend=dict(orientation="h", y=1.14, x=0, font=dict(size=9)),
+        # V9 P5：图内标题删除（外层 section_bar 已有标题），杜绝标题与图例重叠；
+        # 图例移到柱体下方，顶部仅留少量呼吸空间
+        margin=dict(l=8, r=8, t=14, b=36), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5,
+                    font=dict(size=9)),
         yaxis=dict(title="EPS", title_font=dict(size=9), gridcolor="rgba(255,255,255,0.05)"),
         xaxis=dict(tickfont=dict(size=9)),
     )
@@ -2806,6 +2810,32 @@ setInterval(function() {
     .trend-neutral {
         color: #94a3b8 !important;
     }
+
+    /* V9 P6：Tabs 等宽平铺并居中，替换默认的左对齐挤压
+       （实测 DOM：容器为 #stTabs/.stTabs，页签为 div[role="tab"]，非 button） */
+    #stTabs div[role="tablist"], .stTabs div[role="tablist"] {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    #stTabs div[role="tab"], .stTabs div[role="tab"] {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+        background-color: transparent;
+        border-radius: 8px 8px 0 0 !important;
+    }
+
+    /* V9 审美统一：卡片圆角一律 8/12px，杜绝刺眼白底穿透暗黑主题 */
+    .fin-card, .tcard, .kpi-neon-card, .market-card,
+    div[data-testid="stMetric"], .bg-card-glass {
+        border-radius: 12px !important;
+    }
+    .gapbar-track { border-radius: 8px !important; }
+    div[data-testid="stDataFrame"] { background: #171B26 !important; border-radius: 12px !important; }
+    [data-testid="stExpander"] { background: transparent !important; border-radius: 12px !important; }
+    [data-testid="stAlert"] { border-radius: 8px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -3385,6 +3415,172 @@ except Exception as e:
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
+# ============================================================================
+# --- 4.45 V9 战役三：宏观大事日历 (Macro Economic Calendar) ---
+# 左栏：未来 7 天重要宏观事件列表；右栏：选中事件的客观数据卡与影响解读。
+# 数据源优先 akshare 百度经济数据日历（真实），失败降级为示例框架并明确标注；
+# 解读为基于事件类别的客观影响链条描述（规则库），不含任何买卖建议。
+# ============================================================================
+_MACRO_KEY_EVENTS = ["FOMC", "议息", "利率决议", "非农", "就业报告", "失业率", "CPI",
+                     "PCE", "GDP", "PMI", "通胀", "纪要", "财政", "关税", "议会的"]
+
+_MACRO_IMPACT_RULES = [
+    ("FOMC|议息|利率决议|纪要", "全球流动性定价之锚。客观影响链条：利率路径预期 → 美元指数与美债收益率 → 全球风险资产估值分母（成长股久期敏感）→ 黄金/新兴市场资金流向。历史规律：决议前后波动率通常放大，方向由实际结果与市场预期的差值决定。"),
+    ("非农|就业报告|失业率|初请", "美国劳动力市场温度计，美联储双目标之一。客观影响链条：就业强弱 → 政策宽松/收紧预期 → 美元与美债利率 → 风险偏好。历史上该数据公布时刻常出现短线跳空，量化上属于典型的事件驱动波动源。"),
+    ("CPI|PCE|通胀", "通胀读数直接改变实际利率预期。客观影响链条：通胀高于/低于预期 → 加息或降息路径重定价 → 成长/价值风格相对表现、黄金与债券久期联动。该数据对分母端资产的弹性历史上大于对盈利端。"),
+    ("GDP|经济景气", "总量增长锚。客观影响链条：增长上修 → 企业盈利预期与周期品需求预期 → 股市盈利端与大宗商品；同时可能强化'higher for longer'利率预期，股债反应方向取决于通胀背景。"),
+    ("PMI|制造业", "景气先行指标。客观影响链条：荣枯线上下 → 工业品/周期股盈利预期 → 汇率与商品货币联动。历史上对上游资源品与出口链敏感度较高。"),
+    ("财政|关税", "财政与贸易政策事件。客观影响链条：财政扩张/收缩 → 国债供给与利率 → 私人部门挤出/挤入；关税变化直接影响跨国企业成本结构与供应链利润分配。"),
+]
+
+
+def _mcal_fmt(v):
+    """V9：经济日历数值列清洗——NaN/空 → None，数值统一字符串化。"""
+    try:
+        if v is None or str(v).strip() in ("", "nan", "None", "--"):
+            return None
+        f = float(v)
+        return f"{f:.2f}".rstrip("0").rstrip(".") if abs(f) < 1e12 else str(f)
+    except Exception:
+        return str(v).strip()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_macro_calendar_events() -> list:
+    """V9：未来 7 天重要宏观事件。真实源=akshare 百度经济数据日历；
+    连续失败即降级示例框架（source='sample'），绝不抛异常。"""
+    events = []
+    try:
+        for off in range(0, 8):
+            _d = datetime.datetime.now() + datetime.timedelta(days=off)
+            df = _fetch_with_timeout(ak.news_economic_baidu,
+                                     kwargs={"date": _d.strftime("%Y%m%d")},
+                                     timeout_s=10, default=None)
+            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+                if off >= 2 and not events:
+                    break  # 连续两天拉不到 → 直接降级
+                continue
+            name_col = next((c for c in df.columns if "指标" in str(c) or "事件" in str(c)), None)
+            region_col = next((c for c in df.columns if "地区" in str(c) or "国家" in str(c)), None)
+            time_col = next((c for c in df.columns if "时间" in str(c) or "发布" in str(c)), None)
+            # V9：百度经济日历还提供 公布/预期/前值/重要性，全部透传到详情面板
+            exp_col = next((c for c in df.columns if "预期" in str(c)), None)
+            prev_col = next((c for c in df.columns if "前值" in str(c)), None)
+            pub_col = next((c for c in df.columns if "公布" in str(c) or "现值" in str(c)), None)
+            imp_col = next((c for c in df.columns if "重要性" in str(c)), None)
+            if name_col is None:
+                continue
+            for _, r in df.iterrows():
+                name = str(r.get(name_col, "")).strip()
+                if not name or not any(k.lower() in name.lower() for k in _MACRO_KEY_EVENTS):
+                    continue
+                region = str(r.get(region_col, "全球")).strip() if region_col else "全球"
+                tm = str(r.get(time_col, "")).strip()[:5] if time_col else ""
+                imp_raw = r.get(imp_col) if imp_col else None
+                try:
+                    imp_n = int(float(imp_raw)) if imp_raw is not None and str(imp_raw) not in ("nan", "") else 2
+                except Exception:
+                    imp_n = 2
+                events.append({
+                    "_imp": imp_n, "_off": off,
+                    "date": _d.strftime("%m-%d"), "time": tm, "region": region,
+                    "title": name[:40], "importance": "高" if imp_n >= 3 else ("中" if imp_n == 2 else "低"),
+                    "expected": _mcal_fmt(r.get(exp_col)) if exp_col else None,
+                    "previous": _mcal_fmt(r.get(prev_col)) if prev_col else None,
+                    "published": _mcal_fmt(r.get(pub_col)) if pub_col else None,
+                    "source": "akshare·百度经济日历",
+                    "detail": f"真实日历条目：{region} · {name}（{_d.strftime('%Y-%m-%d')} {tm}）",
+                })
+    except Exception:
+        pass
+    if events:
+        # V9：先收全再按 重要性降序 + 日期升序 取前 9，确保 FOMC/CPI 级重磅优先入选
+        _order = {"高": 3, "中": 2, "低": 1}
+        events.sort(key=lambda e: (-e["_imp"], e["_off"]))
+        events = events[:9]
+        for e in events:
+            e.pop("_imp", None); e.pop("_off", None)
+        return events
+    if not events:
+        # 降级：示例框架（明确标注，绝不伪装真实数据）
+        _today = datetime.datetime.now()
+        _samples = [("美国", "FOMC 利率决议与新闻发布会", 2), ("美国", "非农就业报告 (NFP)", 3),
+                    ("美国", "CPI 通胀数据", 1), ("欧元区", "央行利率决议", 4),
+                    ("中国", "制造业 PMI", 5), ("美国", "PCE 物价指数", 6),
+                    ("日本", "央行议息会议", 7)]
+        for i, (rg, tt, dd) in enumerate(_samples):
+            events.append({
+                "date": (_today + datetime.timedelta(days=dd)).strftime("%m-%d"), "time": "20:30",
+                "region": rg, "title": tt, "importance": "高",
+                "source": "示例框架（真实日历接口暂不可用）",
+                "detail": f"示例事件：{rg} · {tt}（交互演示用，非真实排期）",
+            })
+    return events
+
+
+def _macro_impact_text(title: str) -> str:
+    """规则库生成客观影响链条描述（按事件类别匹配），默认给通用客观框架。"""
+    for pats, text in _MACRO_IMPACT_RULES:
+        import re as _re
+        if _re.search(pats, title, flags=_re.I):
+            return text
+    return "重大宏观事件。客观影响框架：实际数据/结果与市场事前预期的差值 → 资产价格重定价；事件前隐含波动率通常抬升，事件后回落。本描述仅为客观传导链条，不含方向性判断。"
+
+
+def render_macro_calendar():
+    evs = fetch_macro_calendar_events()
+    st.markdown("### 🗓️ 宏观大事日历 <span style='font-size:0.78rem; opacity:0.6;'>(未来 7 天 · 事件驱动核心参考)</span>", unsafe_allow_html=True)
+    st.caption("对标华尔街见闻/金十数据的事件驱动视角：左栏选择事件，右栏查看客观数据与影响链条。仅客观聚合，不构成任何投资建议。")
+
+    cal_c1, cal_c2 = st.columns([1, 2])
+    with cal_c1:
+        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">📌 未来 7 天重点事件</div>', unsafe_allow_html=True)
+        for i, ev in enumerate(evs):
+            sel = st.session_state.get("mcal_sel", 0) == i
+            bg = "#1E222D" if not sel else "rgba(41, 98, 255, 0.22)"
+            bd = "#2B3139" if not sel else "#4B9FFF"
+            if st.button(f"{ev['date']} ｜ {ev['region']} ｜ {ev['title']}",
+                         key=f"mcal_btn_{i}", width="stretch"):
+                st.session_state.mcal_sel = i
+                st.rerun()
+            # 选中态高亮提示（按钮本体无法直接改色，用底部标记条区分）
+            if sel:
+                st.markdown('<div style="height:2px; background:#4B9FFF; border-radius:2px; margin:-8px 4px 10px 4px;"></div>', unsafe_allow_html=True)
+        src_note = evs[0].get("source", "") if evs else ""
+        st.caption(f"数据来源：{src_note}" if src_note else "暂无事件数据")
+
+    with cal_c2:
+        ev = evs[st.session_state.get("mcal_sel", 0)] if evs else None
+        if ev:
+            _mrow = lambda lbl, v: f"<div style='display:inline-block; margin-right:18px;'><span style='color:#8B93A7; font-size:0.78rem;'>{lbl}</span><br><b style='color:#F0F3FA;'>{v if v is not None else '—'}</b></div>"
+            st.markdown(f"""
+<div style="background:#1E222D; border:1px solid #2B3139; border-radius:12px; padding:18px; margin-bottom:12px;">
+<div style="font-size:0.78rem; color:#8B93A7;">事件 · {ev['date']} {ev.get('time','')} · 重要性 {ev.get('importance','—')}</div>
+<div style="font-size:1.25rem; font-weight:800; color:#F0F3FA; margin:6px 0;">{ev['region']} · {ev['title']}</div>
+<div style="margin:10px 0 4px 0;">
+{_mrow('预期值', ev.get('expected'))}
+{_mrow('前值', ev.get('previous'))}
+{_mrow('公布值', ev.get('published'))}
+</div>
+<div style="font-size:0.78rem; color:#8B93A7;">{ev['detail']} · 来源：{ev['source']}</div>
+</div>
+""", unsafe_allow_html=True)
+            st.markdown("#### 🔗 客观影响链条（规则库生成 · 无方向性判断）")
+            st.markdown(f"<div style='background:#171B26; border:1px solid #2B3139; border-radius:12px; padding:16px; font-size:0.9rem; line-height:1.8; color:#D1D4DC;'>{_macro_impact_text(ev['title'])}</div>", unsafe_allow_html=True)
+            st.caption("⚠️ 以上为事件类别的客观传导机制描述，非行情预测；数据请以官方发布为准。")
+        else:
+            st.info("暂无宏观事件数据。")
+
+try:
+    render_macro_calendar()
+except Exception as e:
+    import traceback as _tb
+    print("[macro_calendar ERROR]", repr(e))
+    _tb.print_exc()
+    st.warning(f"宏观大事日历暂时不可用: {type(e).__name__}")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
 # --- 4.5 （已上移至首屏第一层）---
 # V8 战役三：搜索栏/API Key/生成按钮已上移到页面顶部第一层。
 # 副作用修复：原顺序下 api_key_input 在快讯模块渲染之后才被赋值，
@@ -3696,8 +3892,10 @@ def build_kline_chart(df, ticker_input):
         height=580,
         xaxis_rangeslider_visible=False,
         template='plotly_dark',
-        margin=dict(l=40, r=20, t=40, b=20),
-        legend=dict(orientation='h', y=1.02, x=0.5, xanchor='center'),
+        # V9 P3：t=60 让 subplot_titles 与图例分家；b=40 给下移图例留位
+        margin=dict(l=40, r=20, t=60, b=40),
+        # V9 P3：图例移到全部副图正下方，不再与 K 线副图标题抢顶部空间
+        legend=dict(orientation='h', yanchor='top', y=-0.1, xanchor='center', x=0.5),
         font=dict(family='Inter', size=12)
     )
     return fig
@@ -4539,7 +4737,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
     st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
     st.markdown("### 📊 标的综合摘要")
-    exec_c1, exec_c2 = st.columns([2, 3])
+    # V9 P1/P2：三栏布局 [雷达图 | 五维文字诊断 | 分析师评级]，消除右侧空白
+    exec_c1, exec_c2, exec_c3 = st.columns([1.2, 1, 1.2], vertical_alignment="top")
 
     if True:
 
@@ -4623,6 +4822,65 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown(f"💡 **五维综合健康指数**: <span style='font-size:1.15rem; font-weight:bold; color:#00F2FE;'>{avg_score:.1f} / 100</span>", unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
+            # ===== V9 P1/P2 右栏：第三方分析师评级分布（原 Tab1 底部独立行，上移填补空白） =====
+            with exec_c3:
+                st.markdown('<div class="bg-card-glass" style="padding:18px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
+                st.markdown("#### 📊 第三方分析师评级分布")
+                st.markdown('<span class="badge-neutral">yfinance 历史评级记录 · 不构成投资建议</span>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
+
+                recs_df_top = all_data.get('recommendations')
+                if recs_df_top is not None and not recs_df_top.empty:
+                    try:
+                        latest_r = recs_df_top.iloc[0]
+                        vals = [
+                            int(latest_r.get('strongBuy', 0) or 0),
+                            int(latest_r.get('buy', 0) or 0),
+                            int(latest_r.get('hold', 0) or 0),
+                            int(latest_r.get('sell', 0) or 0),
+                            int(latest_r.get('strongSell', 0) or 0)
+                        ]
+                        labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
+                        # V9：语义色对齐 V8 规范（强烈买入=沉稳绿 → 强烈卖出=警示红）
+                        colors = ['#26A69A', '#5DBEAE', '#FBBF24', '#EF8A85', '#EF5350']
+                        df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
+                        df_pie = df_pie[df_pie['Value'] > 0]
+                        total_analysts = int(df_pie['Value'].sum()) if not df_pie.empty else 0
+
+                        if not df_pie.empty:
+                            fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.62,
+                                               color='Label', color_discrete_map=dict(zip(labels, colors)))
+                            fig_donut.update_layout(
+                                height=230, margin=dict(l=0, r=0, t=8, b=8),
+                                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="bottom", y=-0.08,
+                                            xanchor="center", x=0.5, font=dict(size=9)),
+                                annotations=[dict(text=f'{total_analysts} 位<br>分析师', x=0.5, y=0.5,
+                                                  font_size=12, showarrow=False,
+                                                  font=dict(color='#D1D4DC'))]
+                            )
+                            fig_donut.update_traces(textinfo='percent', textfont_size=10,
+                                                    hoverinfo='label+value')
+                            st.plotly_chart(fig_donut, width="stretch", config={'displayModeBar': False})
+                        else:
+                            st.info("暂无有效评级人数")
+                    except Exception:
+                        st.info("评级数据解析异常")
+                else:
+                    st.info("暂无评级数据")
+
+                st.markdown(
+                    f"""
+**第三方目标价历史区间**
+- 🎯 最高: {fmt_price_val(high_p, currency) if high_p else 'N/A'}
+- ⚖️ 均值: {fmt_price_val(mean_p, currency) if mean_p else 'N/A'}
+- 🛡️ 最低: {fmt_price_val(low_p, currency) if low_p else 'N/A'}
+
+<div style="font-size:0.75rem; opacity:0.6; margin-top:0.6rem;">数据来源：yfinance 分析师一致预期（历史事实记录）<br>不构成投资建议</div>
+""", unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
             st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
             tab1, tab2, tab3, tab4 = st.tabs(["🎯 反共识诊断", "📊 财报与估值穿透", "🏛️ 机构与资金追踪", "📰 AI 中性舆情解构"])
@@ -4635,53 +4893,10 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">📌 【{s_title_name}】 客观数据总览</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源（yfinance/akshare）的客观历史记录，不构成、也不包含本站任何投资建议、评级、目标价推荐或仓位建议。")
 
-                st.markdown("### 📊 第三方分析师评级分布 (历史事实)")
+                # V9 P1/P2：分析师评级分布已上移至 Executive Summary 右栏（exec_c3），
+                # 此处不再重复渲染，Tab1 直接进入产业链图谱与主营业务构成。
                 recs_df_top = all_data.get('recommendations')
-
-                rat_col_text, rat_col_chart = st.columns([1, 1.2])
-                with rat_col_text:
-                    st.markdown(f"""
-                    **第三方目标价历史区间**
-                    - 最高: {fmt_price_val(high_p, currency) if high_p else 'N/A'}
-                    - 均值: {fmt_price_val(mean_p, currency) if mean_p else 'N/A'}
-                    - 最低: {fmt_price_val(low_p, currency) if low_p else 'N/A'}
-
-                    <div style="font-size:0.75rem; opacity:0.6; margin-top:1rem;">数据来源：yfinance<br>不构成投资建议</div>
-                    """, unsafe_allow_html=True)
-
-                with rat_col_chart:
-                    if recs_df_top is not None and not recs_df_top.empty:
-                        try:
-                            latest_r = recs_df_top.iloc[0]
-                            vals = [
-                                int(latest_r.get('strongBuy', 0) or 0),
-                                int(latest_r.get('buy', 0) or 0),
-                                int(latest_r.get('hold', 0) or 0),
-                                int(latest_r.get('sell', 0) or 0),
-                                int(latest_r.get('strongSell', 0) or 0)
-                            ]
-                            labels = ['强烈买入', '买入', '持有', '卖出', '强烈卖出']
-                            colors = ['#ef4444', '#f87171', '#fbbf24', '#34d399', '#00b865']
-                            df_pie = pd.DataFrame({'Label': labels, 'Value': vals})
-                            df_pie = df_pie[df_pie['Value'] > 0]
-
-                            if not df_pie.empty:
-                                fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.6,
-                                                  color='Label', color_discrete_map=dict(zip(labels, colors)))
-                                fig_donut.update_layout(
-                                    height=220, margin=dict(l=0, r=0, t=10, b=10),
-                                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                    showlegend=False,
-                                    annotations=[dict(text='第三方评级分布', x=0.5, y=0.5, font_size=12, showarrow=False)]
-                                )
-                                fig_donut.update_traces(textinfo='label+percent', textfont_size=11, hoverinfo='label+value')
-                                st.plotly_chart(fig_donut, width="stretch")
-                            else:
-                                st.info("暂无有效评级人数")
-                        except Exception:
-                            st.info("评级数据解析异常")
-                    else:
-                        st.info("暂无评级数据")
+                # （评级圆环图已上移至 Executive Summary 右栏）
 
                 st.markdown('<div class="spacer-lg"></div>', unsafe_allow_html=True)
                 st.markdown("---")
@@ -5046,29 +5261,33 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                     return '<span class="trend-neutral">—</span>'
 
                 def make_card(label, value_str, trend_html):
-                    return f"""
-                    <div class="fin-card">
-                        <div class="fin-label">{label}</div>
-                        <div class="fin-value">{value_str}</div>
-                        <div class="fin-trend">{trend_html}</div>
-                    </div>
-                    """
+                    # V9 P4：HTML 必须顶格（无前导缩进）——Markdown 会把 >=4 空格缩进的
+                    # 行当代码块渲染，导致 <div class="fin-card"> 以纯文本泄露到页面上。
+                    return (
+                        '<div class="fin-card">'
+                        f'<div class="fin-label">{label}</div>'
+                        f'<div class="fin-value">{value_str}</div>'
+                        f'<div class="fin-trend">{trend_html}</div>'
+                        '</div>'
+                    )
 
-                cards_html = f"""
-                <div class="financial-grid">
-                    {make_card("📊 营业收入 (Revenue)", fnum(rev_now, money=True), fmt_trend(rev_now, rev_prev))}
-                    {make_card("💵 净利润 (Net Income)", fnum(np_now, money=True), fmt_trend(np_now, np_prev))}
-                    {make_card("🏢 营业利润 (Operating Income)", fnum(op_inc_now, money=True), fmt_trend(op_inc_now, op_inc_prev))}
-                    {make_card("🔬 研发投入 (R&D)", fnum(rd_now, money=True), fmt_trend(rd_now, rd_prev))}
-                    {make_card("💸 经营性现金流 (Op Cashflow)", fnum(op_cf_now, money=True), fmt_trend(op_cf_now, op_cf_prev))}
-                    {make_card("🌊 自由现金流 (FCF)", fnum(fcf, money=True), '<span class="trend-neutral">—</span>')}
-                    {make_card("📈 毛利率 (Gross Margin)", fnum(gross_margin, pct=True), '<span class="trend-neutral">—</span>')}
-                    {make_card("📊 净利率 (Net Margin)", fnum(net_margin, pct=True), '<span class="trend-neutral">—</span>')}
-                    {make_card("🧬 ROE (净资产收益率)", fnum(roe, pct=True), '<span class="trend-neutral">—</span>')}
-                    {make_card("🛡️ 资产负债率 (Debt to Assets)", fnum(debt_to_assets, pct=True), '<span class="trend-neutral">—</span>')}
-                    {make_card("⚖️ 负债权益比 (Debt to Equity)", fnum(debt_ratio), '<span class="trend-neutral">—</span>')}
-                </div>
-                """
+                cards_html = (
+                    '<div class="financial-grid">'
+                    + "".join([
+                        make_card("📊 营业收入 (Revenue)", fnum(rev_now, money=True), fmt_trend(rev_now, rev_prev)),
+                        make_card("💵 净利润 (Net Income)", fnum(np_now, money=True), fmt_trend(np_now, np_prev)),
+                        make_card("🏢 营业利润 (Operating Income)", fnum(op_inc_now, money=True), fmt_trend(op_inc_now, op_inc_prev)),
+                        make_card("🔬 研发投入 (R&D)", fnum(rd_now, money=True), fmt_trend(rd_now, rd_prev)),
+                        make_card("💸 经营性现金流 (Op Cashflow)", fnum(op_cf_now, money=True), fmt_trend(op_cf_now, op_cf_prev)),
+                        make_card("🌊 自由现金流 (FCF)", fnum(fcf, money=True), '<span class="trend-neutral">—</span>'),
+                        make_card("📈 毛利率 (Gross Margin)", fnum(gross_margin, pct=True), '<span class="trend-neutral">—</span>'),
+                        make_card("📊 净利率 (Net Margin)", fnum(net_margin, pct=True), '<span class="trend-neutral">—</span>'),
+                        make_card("🧬 ROE (净资产收益率)", fnum(roe, pct=True), '<span class="trend-neutral">—</span>'),
+                        make_card("🛡️ 资产负债率 (Debt to Assets)", fnum(debt_to_assets, pct=True), '<span class="trend-neutral">—</span>'),
+                        make_card("⚖️ 负债权益比 (Debt to Equity)", fnum(debt_ratio), '<span class="trend-neutral">—</span>'),
+                    ])
+                    + '</div>'
+                )
                 st.markdown(cards_html, unsafe_allow_html=True)
                 st.caption("📌 双向/客观财报指标展示系统，N/A 表示接口未返回对应披露项。")
 
