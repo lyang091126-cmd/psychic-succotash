@@ -2793,15 +2793,9 @@ document.addEventListener('keydown', function(e) {
     document.head.appendChild(s);
 })();
 
-// 7. 检测自动化访问环境(无头爬虫常见特征)时屏蔽页面
-(function() {
-    try {
-        if (!window.navigator.languages || window.navigator.languages.length === 0 ||
-            navigator.webdriver) {
-            document.body.innerHTML = '<div style="padding:60px; text-align:center; font-size:18px; color:#94a3b8;">⚠️ 检测到自动化访问，内容已屏蔽</div>';
-        }
-    } catch (e) {}
-})();
+// V10.3 修复：移除原第 7 层"自动化指纹检测"——该防护会整体替换 body DOM，
+// React 事后部分重挂载导致整页 UI/排版丢失只剩裸文字（用户实测 P1-P4 故障根源），
+// 且对真爬虫无实际防御力（指纹可伪造），纯自伤式防护，予以拆除。
 </script>
 
 <style>
@@ -3636,7 +3630,8 @@ def fetch_macro_calendar_events() -> list:
     连续失败即降级示例框架（source='sample'），绝不抛异常。"""
     events = []
     try:
-        for off in range(0, 8):
+        # V10.3 P7：范围含过去 3 天——当天非交易日无事件时，自动展示上一个交易日数据
+        for off in range(-3, 8):
             _d = datetime.datetime.now() + datetime.timedelta(days=off)
             df = _fetch_with_timeout(ak.news_economic_baidu,
                                      kwargs={"date": _d.strftime("%Y%m%d")},
@@ -3679,10 +3674,14 @@ def fetch_macro_calendar_events() -> list:
     except Exception:
         pass
     if events:
-        # V9：先收全再按 重要性降序 + 日期升序 取前 9，确保 FOMC/CPI 级重磅优先入选
-        _order = {"高": 3, "中": 2, "低": 1}
-        events.sort(key=lambda e: (-e["_imp"], e["_off"]))
-        events = events[:9]
+        # V10.3 P7：上一交易日优先——当天非交易日无数据时，最近一个有数据的过去交易日
+        # 的事件排在最前（最近的过去优先）；过去限 3 条 + 今天/未来限 6 条，
+        # 兼顾"回顾上一交易日"与"前瞻未来排期"
+        _past = [e for e in events if e["_off"] < 0]
+        _fut = [e for e in events if e["_off"] >= 0]
+        _past.sort(key=lambda e: (-e["_off"], -e["_imp"]))
+        _fut.sort(key=lambda e: (e["_off"], -e["_imp"]))
+        events = _past[:3] + _fut[:6]
         for e in events:
             e.pop("_imp", None); e.pop("_off", None)
         return events
@@ -3719,7 +3718,7 @@ def render_macro_calendar():
 
     cal_c1, cal_c2 = st.columns([1, 2])
     with cal_c1:
-        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">📌 未来 7 天重点事件</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">📌 重点事件 · 上一交易日回顾 + 未来排期</div>', unsafe_allow_html=True)
         for i, ev in enumerate(evs):
             sel = st.session_state.get("mcal_sel", 0) == i
             bg = "#1E222D" if not sel else "rgba(41, 98, 255, 0.22)"
@@ -3735,6 +3734,9 @@ def render_macro_calendar():
         st.caption(f"数据来源：{src_note}" if src_note else "暂无事件数据")
 
     with cal_c2:
+        # V10.3 P6：右栏加与左栏同规格的小标题，两栏首行对齐（右栏详情卡随之下移，
+        # 上沿与左侧第一个事件按钮的上沿水平对齐）
+        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">🔍 事件详情 · 客观影响解读</div>', unsafe_allow_html=True)
         ev = evs[st.session_state.get("mcal_sel", 0)] if evs else None
         if ev:
             _mrow = lambda lbl, v: f"<div style='display:inline-block; margin-right:18px;'><span style='color:#8B93A7; font-size:0.78rem;'>{lbl}</span><br><b style='color:#F0F3FA;'>{v if v is not None else '—'}</b></div>"
@@ -4276,6 +4278,46 @@ def analyze_kline_and_chanlun(df):
     segments = segments[-5:]
     segments_html = "".join([f"<div style='background:rgba(255,255,255,0.05); padding:5px 10px; border-radius:5px; margin-bottom:5px; font-size:0.85rem;'>{s}</div>" for s in segments]) if segments else "<div style='opacity:0.6'>近半年未见超10%波段</div>"
 
+    # ---- V10.3：文字技术研判（规则拼接的客观叙述，非主观预测） ----
+    try:
+        ma20_v = float(df['MA20'].iloc[-1]) if not pd.isna(df['MA20'].iloc[-1]) else None
+        ma50_v = float(df['MA50'].iloc[-1]) if not pd.isna(df['MA50'].iloc[-1]) else None
+    except Exception:
+        ma20_v = ma50_v = None
+    _n_parts = []
+    _n_parts.append(f"该标的近一年累计涨跌幅 <b>{pct_1y:+.1f}%</b>，整体处于「{trend_status}」格局。")
+    if zg_display and zd_display:
+        if recent_close > zg_display:
+            _pos = f"当前价 <b>{recent_close:.2f}</b> 已站上近60日缠论中枢上沿（{zg_display:.2f}），中枢上沿转化为短期回踩观察位，突破的有效性需后续量能确认"
+        elif recent_close < zd_display:
+            _pos = f"当前价 <b>{recent_close:.2f}</b> 跌破近60日缠论中枢下沿（{zd_display:.2f}），中枢下沿转为反压位，下方空间打开与否取决于能否快速收复"
+        else:
+            _pos = f"当前价 <b>{recent_close:.2f}</b> 运行于近60日缠论中枢区间 [{zd_display:.2f}, {zg_display:.2f}] 内部，属典型箱体震荡结构，中枢上下沿分别构成短期压力与支撑参考"
+        _n_parts.append(_pos + "。")
+    if ma20_v and ma50_v:
+        if ma20_v > ma50_v:
+            _n_parts.append(f"均线系统呈多头排列迹象（MA20={ma20_v:.2f} 高于 MA50={ma50_v:.2f}），中期趋势动能偏多，MA20 附近构成第一档动态支撑。")
+        else:
+            _n_parts.append(f"均线系统呈空头排列迹象（MA20={ma20_v:.2f} 低于 MA50={ma50_v:.2f}），中期趋势承压，MA50 附近构成上方动态压力。")
+    _n_parts.append(f"动能维度：MACD 最新柱体 {macd_recent:.3f}，{divergence}；{rsi_status}。")
+    if '上轨' in boll_status:
+        try:
+            if recent_close > boll_upper.iloc[-1]:
+                _n_parts.append("价格触及布林带上轨上方，短期波动率放大，注意冲高后的均值回归引力")
+            elif recent_close < boll_lower.iloc[-1]:
+                _n_parts.append("价格跌破布林带下轨，短期超卖特征明显，关注下轨附近的企稳信号")
+            else:
+                _n_parts.append("价格运行于布林带上下轨之间，波动率处于常态区间")
+        except Exception:
+            pass
+    narrative_html = (
+        '<div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin:14px 0 8px 0;">📋 技术面综合研判（客观描述 · 非买卖建议）</div>'
+        '<div style="background:rgba(11, 17, 32, 0.55); border:1px solid rgba(255,255,255,0.08); '
+        'border-radius:10px; padding:14px 16px; font-size:0.85rem; line-height:1.9; color:#D1D4DC;">'
+        + "".join(p for p in _n_parts if p)
+        + '<div style="font-size:0.72rem; opacity:0.6; margin-top:8px;">以上为量化指标的客观串联描述，全部基于真实K线计算，不构成任何投资建议。</div></div>'
+    )
+
     html = f"""<div style="background:rgba(30, 41, 59, 0.7); padding:20px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);">
 <h4 style="color:#4B9FFF; margin-bottom:15px; font-size:1.05rem;">【近1年K线量化与缠论指标】</h4>
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:15px;">
@@ -4305,6 +4347,7 @@ def analyze_kline_and_chanlun(df):
 </div>
 <div style="font-size:0.9rem; color:#e2e8f0; font-weight:600; margin-bottom:10px;">📉 波段起止明细 (最近5条)</div>
 {segments_html}
+{narrative_html}
 </div>"""
     return html
 
@@ -5314,8 +5357,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 def _m8(v):
                     return f"{v/1e8:,.2f}亿" if isinstance(v, (int, float)) else "数据缺失"
 
-                # V10 P9：现金流卡片与 EPS 柱状图垂直居中对齐
-                ex_c1, ex_c2 = st.columns([1, 1.2], vertical_alignment="center")
+                # V10.3 P5：改为顶部对齐——卡片与图表上沿齐平（居中会让卡片悬在半空显得错位）
+                ex_c1, ex_c2 = st.columns([1, 1.2], vertical_alignment="top")
                 with ex_c1:
                     _capex = extra_fin.get('capex')
                     _fcf = extra_fin.get('fcf')
