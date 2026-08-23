@@ -2764,6 +2764,44 @@ setInterval(function() {
         })(a);
     })();
 }, 1000);
+
+// ===== V10.2 反爬增强层 =====
+// 4. 拦截复制/剪切/拖拽：页面内容不可被选中复制带走
+document.addEventListener('copy', function(e) {
+    e.clipboardData.setData('text/plain', '⚠️ 本终端内容受保护，禁止复制抓取');
+    e.preventDefault();
+    return false;
+}, false);
+document.addEventListener('cut', function(e) { e.preventDefault(); return false; }, false);
+document.addEventListener('dragstart', function(e) { e.preventDefault(); return false; }, false);
+
+// 5. 补充快捷键封锁：打印(Ctrl/Cmd+P)、全选(Ctrl/Cmd+A)
+document.addEventListener('keydown', function(e) {
+    var k = e.key ? e.key.toUpperCase() : '';
+    if ((e.ctrlKey || e.metaKey) && (k === 'P' || k === 'p' || e.keyCode === 80 ||
+                                     k === 'A' || k === 'a' || e.keyCode === 65)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }
+}, false);
+
+// 6. 打印/另存为阅读模式时隐藏全部内容
+(function() {
+    var s = document.createElement('style');
+    s.textContent = '@media print { body * { display: none !important; } body::after { content: "⚠️ 内容受保护，禁止打印"; display: block !important; font-size: 24px; padding: 40px; } }';
+    document.head.appendChild(s);
+})();
+
+// 7. 检测自动化访问环境(无头爬虫常见特征)时屏蔽页面
+(function() {
+    try {
+        if (!window.navigator.languages || window.navigator.languages.length === 0 ||
+            navigator.webdriver) {
+            document.body.innerHTML = '<div style="padding:60px; text-align:center; font-size:18px; color:#94a3b8;">⚠️ 检测到自动化访问，内容已屏蔽</div>';
+        }
+    } catch (e) {}
+})();
 </script>
 
 <style>
@@ -2964,6 +3002,13 @@ body [data-testid="stNumberInput"] label {{
 div[data-testid="stHorizontalBlock"] {{ align-items: stretch; }}
 div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {{
     display: flex; flex-direction: column; justify-content: flex-start;
+}}
+/* V10.2 防爬水印：右下角固定标识，截图/存档溯源用 */
+body::after {{
+    content: "PROTECTED · 智能投研终端 · 内容受保护";
+    position: fixed; right: 14px; bottom: 10px;
+    font-size: 0.66rem; color: rgba(139, 147, 167, 0.38);
+    letter-spacing: 1px; pointer-events: none; z-index: 9999;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -5040,7 +5085,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             # Tab 1：反共识诊断 —— 分析师评级分布、产业链图谱、主营业务构成、缠论技术摘要
             # =====================================================================
             with tab1:
-                st.markdown("---")
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:1.0rem;">📌 【{s_title_name}】 客观数据总览</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源（yfinance/akshare）的客观历史记录，不构成、也不包含本站任何投资建议、评级、目标价推荐或仓位建议。")
 
@@ -5207,7 +5251,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
 
             with tab2:
-                st.markdown("---")
                 st.markdown(f'<div style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:0.6rem;">📊 【{s_title_name}】 财报与估值穿透</div>', unsafe_allow_html=True)
                 st.caption("⚠️ 以下均为第三方数据源的客观历史记录与统计计算，不构成估值结论或投资建议。")
 
@@ -5578,7 +5621,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             # Tab 3：机构与资金追踪 —— 十大流通股东持仓（此前误挂在tab1）+ 机构调研记录
             # =====================================================================
             with tab3:
-                st.markdown("---")
                 st.markdown(f"### 🏛️ 【{s_title_name}】 机构持仓与资金追踪 <span style='font-size:0.75rem; opacity:0.6;'>公开披露信息聚合</span>", unsafe_allow_html=True)
 
                 has_inst = bool(st_prof['inst_names'] and st_prof['inst_shares'])
@@ -5642,7 +5684,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
             # Tab 4：AI 中性舆情解构 —— 新闻事件性质客观分类（不变）
             # =====================================================================
             with tab4:
-                st.markdown("---")
                 # V10.1：标题与副标题分两行，杜绝挤成一行
                 st.markdown("## 📰 近期新闻事件性质客观分类", unsafe_allow_html=True)
                 st.caption("基于新闻标题关键词的客观事件性质分类，非对股价走势的预测")
