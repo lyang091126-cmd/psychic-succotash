@@ -971,6 +971,107 @@ div[data-testid="stMarkdownContainer"] th {{
 }}
 div[data-testid="stMarkdownContainer"] td {{ font-size: 0.8rem !important; padding: 0.35rem 0.6rem !important; }}
 div[data-baseweb="tab-panel"] {{ padding-top: 0.6rem; }}
+
+/* =====================================================================
+   V11: 机构级通用数据表格 — 借鉴日报规范
+   首列左对齐 / 数字列右对齐 / 等宽数字字体 / hover 高亮
+====================================================================== */
+.inst-table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    background: rgba(10, 15, 30, 0.5);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.06);
+    margin: 8px 0 14px 0;
+}}
+.inst-table th {{
+    background: rgba(255,255,255,0.06);
+    padding: 7px 12px;
+    text-align: left;
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}}
+.inst-table th.num, .inst-table td.num {{
+    text-align: right;
+    font-family: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+}}
+.inst-table td {{
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: {C_TEXT};
+    transition: background 0.15s;
+}}
+.inst-table tr:hover td {{
+    background: rgba(0,242,254,0.04);
+}}
+.inst-table .rate-up {{ color: #ef4444; font-weight: 700; font-family: 'JetBrains Mono', monospace; }}
+.inst-table .rate-dn {{ color: #00b865; font-weight: 700; font-family: 'JetBrains Mono', monospace; }}
+.inst-table .rate-neu {{ color: #94a3b8; font-family: 'JetBrains Mono', monospace; }}
+.inst-table .rate-val {{ font-family: 'JetBrains Mono', 'Consolas', monospace; font-weight: 600; color: {C_TEXT_STRONG}; }}
+
+/* =====================================================================
+   V11: 图文联动分析段落卡片 (.chart-ana)
+====================================================================== */
+.chart-ana {{
+    background: rgba(15, 23, 42, 0.7);
+    border-left: 3px solid {C_ACCENT};
+    border-radius: 0 8px 8px 0;
+    padding: 0.75rem 1rem;
+    margin: 4px 0 12px 0;
+    font-size: 0.82rem;
+    line-height: 1.65;
+    color: {C_TEXT};
+    backdrop-filter: blur(4px);
+}}
+.chart-ana .ana-fact {{ color: {C_TEXT_STRONG}; font-weight: 600; }}
+.chart-ana .ana-chg {{ color: {C_WARN}; font-weight: 600; }}
+.chart-ana .ana-attr {{ color: {C_NEUTRAL}; }}
+.chart-ana .ana-outlook {{ color: {C_ACCENT_SOFT}; font-style: italic; }}
+
+/* =====================================================================
+   V11: Shibor 利率徽章
+====================================================================== */
+.shibor-grid {{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 8px 0 14px 0;
+}}
+.shibor-cell {{
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+}}
+.shibor-cell:hover {{ border-color: {C_ACCENT}; }}
+.shibor-term {{ font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }}
+.shibor-rate {{ font-size: 1.2rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: {C_TEXT_STRONG}; }}
+.shibor-chg {{ font-size: 0.72rem; font-weight: 700; margin-top: 3px; }}
+.shibor-up {{ color: #ef4444; }}
+.shibor-dn {{ color: #00b865; }}
+
+/* =====================================================================
+   V11: 利率传导说明框
+====================================================================== */
+.rate-relay-box {{
+    background: linear-gradient(135deg, rgba(41,98,255,0.08) 0%, rgba(0,242,254,0.04) 100%);
+    border: 1px solid rgba(41,98,255,0.25);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin: 10px 0;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: {C_TEXT};
+}}
+.rate-relay-box strong {{ color: {C_ACCENT_SOFT}; }}
+
 </style>
 """)
 
@@ -1958,6 +2059,413 @@ def render_macro_capital_board():
                 st.info("未获取到当前合约的分席位持仓数据。")
         else:
             st.warning("暂无股指期货主力席位持仓变动数据。")
+
+
+# ============================================================================
+# V11 新增：统一图文分析段落助手
+# ============================================================================
+
+def render_chart_caption(data_fact: str, chg_desc: str, attribution: str, outlook: str):
+    """渲染标准化图文联动分析段落（仿机构日报 .ana 格式）。
+    data_fact:   数据事实描述
+    chg_desc:    环比/同比变动
+    attribution: 机构行为归因
+    outlook:     简短展望
+    """
+    st.markdown(
+        f'<div class="chart-ana">'
+        f'<span class="ana-fact">{data_fact}</span>，'
+        f'<span class="ana-chg">{chg_desc}</span>。'
+        f'<span class="ana-attr">{attribution}</span>。'
+        f'<span class="ana-outlook">展望：{outlook}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+
+
+# ============================================================================
+# V11 新增：资金面与利率监控室
+# ============================================================================
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_shibor_latest():
+    """获取最新 Shibor 全期限利率数据（akshare macro_china_shibor_all）。"""
+    try:
+        df = ak.macro_china_shibor_all()
+        if df is None or df.empty:
+            return None
+        # 列顺序: 日期, O/N-利率, O/N-涨跌幅, 1W-利率, 1W-涨跌幅, ..., 1Y-利率, 1Y-涨跌幅
+        cols = df.columns.tolist()
+        df = df.tail(30).copy()  # 只保留最近30条
+        return df, cols
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_bond_yield_curve():
+    """获取最近2个交易日的中债国债收益率曲线数据。"""
+    try:
+        end_dt = datetime.date.today()
+        start_dt = end_dt - datetime.timedelta(days=15)
+        df = ak.bond_china_yield(
+            start_date=start_dt.strftime('%Y%m%d'),
+            end_date=end_dt.strftime('%Y%m%d')
+        )
+        if df is None or df.empty:
+            return None
+        # 列: 债券类型, 日期, 3月, 6月, 1年, 3年, 5年, 7年, 10年, 30年
+        cols = df.columns.tolist()
+        date_col = cols[1]
+        type_col = cols[0]
+        # 只取国债
+        df_gov = df[df[type_col].str.contains('国债', na=False)].copy()
+        if df_gov.empty:
+            df_gov = df.copy()
+        df_gov[date_col] = pd.to_datetime(df_gov[date_col])
+        df_gov = df_gov.sort_values(date_col)
+        return df_gov, cols
+    except Exception:
+        return None
+
+
+def render_rate_monitor():
+    """V11 新增：资金面与利率监控室 - Shibor + 中债国债收益率曲线。"""
+    with st.expander("📈 资金面与利率监控室 (Money Market & Bond Yields)", expanded=True):
+
+        # ── 标题条 ─────────────────────────────────────────────────────────
+        st.markdown(
+            '<div class="term-bar">'
+            '<span class="term-bar-title">🏦 Shibor 银行间同业拆借利率 · 全期限快览</span>'
+            '<span class="term-bar-note">来源: akshare · 中国外汇交易中心(CFETS) · 每日盘后更新</span>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        st.caption("Shibor（Shanghai Interbank Offered Rate）是人民币利率的核心基准锚，短端（O/N ~ 2W）反映央行流动性松紧，长端（3M ~ 1Y）影响信贷与债券定价。")
+
+        # ── A. Shibor 全期限利率快览表格 ──────────────────────────────────
+        shibor_result = _fetch_shibor_latest()
+        if shibor_result is not None:
+            df_shibor, shibor_cols = shibor_result
+            # 解析最新一行
+            latest = df_shibor.iloc[-1]
+            # 期限映射：(列名前缀, 中文名称)
+            terms = [
+                ('O/N', '隔夜'),
+                ('1W',  '1周'),
+                ('2W',  '2周'),
+                ('1M',  '1个月'),
+                ('3M',  '3个月'),
+                ('6M',  '6个月'),
+                ('9M',  '9个月'),
+                ('1Y',  '1年'),
+            ]
+            # 构建 HTML 快览网格
+            shibor_cells = ''
+            for prefix, label in terms:
+                rate_col = f'{prefix}-利率'
+                chg_col  = f'{prefix}-涨跌幅'
+                # 尝试匹配（实际列名可能为乱码，按位置取）
+                rate_val = None
+                chg_val  = None
+                for c in shibor_cols:
+                    c_str = str(c)
+                    if prefix in c_str and '涨' not in c_str and '幅' not in c_str and c_str != shibor_cols[0]:
+                        try:
+                            rate_val = float(latest[c])
+                        except Exception:
+                            pass
+                    if prefix in c_str and ('涨' in c_str or '幅' in c_str):
+                        try:
+                            chg_val = float(latest[c])
+                        except Exception:
+                            pass
+                if rate_val is None:
+                    continue
+                if chg_val is not None and chg_val > 0:
+                    chg_html = f'<div class="shibor-chg shibor-up">▲ {chg_val:+.2f} BP</div>'
+                elif chg_val is not None and chg_val < 0:
+                    chg_html = f'<div class="shibor-chg shibor-dn">▼ {chg_val:.2f} BP</div>'
+                else:
+                    chg_html = '<div class="shibor-chg" style="color:#64748b;">── 0.00 BP</div>'
+                shibor_cells += (
+                    f'<div class="shibor-cell">'
+                    f'<div class="shibor-term">{label}</div>'
+                    f'<div class="shibor-rate">{rate_val:.4f}%</div>'
+                    f'{chg_html}'
+                    f'</div>'
+                )
+
+            # 取最新日期
+            date_col_0 = shibor_cols[0]
+            latest_date = str(latest[date_col_0]) if date_col_0 in latest.index else ''
+
+            st.markdown(
+                f'<div style="font-size:0.78rem; color:#64748b; margin-bottom:6px;">'
+                f'📅 最新报价日期: <b style="color:#94a3b8;">{latest_date}</b></div>'
+                f'<div class="shibor-grid">{shibor_cells}</div>',
+                unsafe_allow_html=True
+            )
+
+            # ── B. Shibor 近期走势折线图（3条期限对比） ─────────────────
+            st.markdown("**📊 Shibor 近 30 日走势对比（隔夜 / 1周 / 1个月）**")
+            # 提取3条期限的时序列
+            try:
+                date_vals = pd.to_datetime(df_shibor.iloc[:, 0])
+                on_vals, w1_vals, m1_vals = [], [], []
+                on_col, w1_col, m1_col = None, None, None
+                for c in shibor_cols[1:]:
+                    c_str = str(c)
+                    is_rate = '涨' not in c_str and '幅' not in c_str
+                    if 'O/N' in c_str and is_rate and on_col is None:
+                        on_col = c
+                    elif '1W' in c_str and is_rate and w1_col is None:
+                        w1_col = c
+                    elif '1M' in c_str and is_rate and m1_col is None:
+                        m1_col = c
+
+                fig_shibor = go.Figure()
+                date_strs = [d.strftime('%Y-%m-%d') for d in date_vals]
+
+                if on_col:
+                    fig_shibor.add_trace(go.Scatter(
+                        x=date_strs, y=pd.to_numeric(df_shibor[on_col], errors='coerce').tolist(),
+                        name='O/N 隔夜', line=dict(color='#ef4444', width=2),
+                        mode='lines+markers', marker=dict(size=3)
+                    ))
+                if w1_col:
+                    fig_shibor.add_trace(go.Scatter(
+                        x=date_strs, y=pd.to_numeric(df_shibor[w1_col], errors='coerce').tolist(),
+                        name='1W 一周', line=dict(color='#38bdf8', width=2),
+                        mode='lines+markers', marker=dict(size=3)
+                    ))
+                if m1_col:
+                    fig_shibor.add_trace(go.Scatter(
+                        x=date_strs, y=pd.to_numeric(df_shibor[m1_col], errors='coerce').tolist(),
+                        name='1M 一月', line=dict(color='#a78bfa', width=2),
+                        mode='lines+markers', marker=dict(size=3)
+                    ))
+
+                fig_shibor.update_layout(
+                    height=280,
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    template='plotly_dark',
+                    legend=dict(orientation='h', y=1.05, x=0, font=dict(size=11)),
+                    xaxis=dict(type='category', gridcolor='rgba(255,255,255,0.05)', tickangle=-30),
+                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='利率 (%)', tickformat='.4f'),
+                    hovermode='x unified'
+                )
+                st.plotly_chart(apply_institutional_axes(fig_shibor), width="stretch", key="v11_shibor_trend")
+
+                # 自动生成分析段落
+                try:
+                    on_latest = float(df_shibor[on_col].iloc[-1]) if on_col else None
+                    on_prev = float(df_shibor[on_col].iloc[-2]) if on_col and len(df_shibor) >= 2 else None
+                    on_chg = (on_latest - on_prev) * 100 if on_latest and on_prev else 0
+                    chg_direction = '上行' if on_chg > 0 else ('下行' if on_chg < 0 else '持平')
+                    render_chart_caption(
+                        data_fact=f"截至 {latest_date}，Shibor O/N（隔夜）报 {on_latest:.4f}%",
+                        chg_desc=f"较前一日{chg_direction} {abs(on_chg):.2f} BP",
+                        attribution="短端拆借利率波动反映央行公开市场操作（OMO）投放节奏与市场资金面松紧程度",
+                        outlook="若隔夜利率持续高于 1W 利率，表明短期流动性偏紧，需关注央行逆回购操作动向"
+                    )
+                except Exception:
+                    pass
+            except Exception as e:
+                st.info(f"Shibor 走势图渲染暂缓: {e}")
+        else:
+            st.warning("Shibor 利率数据暂时无法获取，请稍后刷新重试。")
+
+        st.markdown("---")
+
+        # ── C. 中债国债收益率曲线（今日 vs 昨日双线对比） ───────────────
+        st.markdown(
+            '<div class="term-bar">'
+            '<span class="term-bar-title">🇨🇳 中债国债收益率曲线 · 今日 vs 昨日对比</span>'
+            '<span class="term-bar-note">来源: akshare · 中央国债登记结算有限公司(CCDC)</span>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        st.caption("国债收益率曲线是市场对未来经济与货币政策预期的综合体现。曲线走陡（长端上行）通常预示经济复苏预期增强；曲线走平（利差收窄）则反映衰退担忧或资金向长端避险。")
+
+        bond_result = _fetch_bond_yield_curve()
+        if bond_result is not None:
+            df_bond, bond_cols = bond_result
+            # 列名: [债券类型, 日期, 3月, 6月, 1年, 3年, 5年, 7年, 10年, 30年]
+            type_col  = bond_cols[0]
+            date_col  = bond_cols[1]
+            tenor_cols = bond_cols[2:]  # 3月/6月/1年/3年/5年/7年/10年/30年
+            tenor_labels = ['3月', '6月', '1年', '3年', '5年', '7年', '10年', '30年']
+
+            # 获取最新2个交易日
+            unique_dates = sorted(df_bond[date_col].unique())
+            if len(unique_dates) >= 2:
+                today_dt   = unique_dates[-1]
+                yest_dt    = unique_dates[-2]
+                row_today  = df_bond[df_bond[date_col] == today_dt].iloc[0]
+                row_yest   = df_bond[df_bond[date_col] == yest_dt].iloc[0]
+
+                today_vals = []
+                yest_vals  = []
+                valid_tenors = []
+                for tc, tl in zip(tenor_cols, tenor_labels):
+                    try:
+                        tv = float(row_today[tc])
+                        yv = float(row_yest[tc])
+                        today_vals.append(tv)
+                        yest_vals.append(yv)
+                        valid_tenors.append(tl)
+                    except Exception:
+                        pass
+
+                if valid_tenors:
+                    fig_yield = go.Figure()
+                    fig_yield.add_trace(go.Scatter(
+                        x=valid_tenors, y=today_vals,
+                        name=f'今日 ({pd.Timestamp(today_dt).strftime("%m-%d")})',
+                        line=dict(color='#ef4444', width=2.5),
+                        mode='lines+markers',
+                        marker=dict(size=7, symbol='circle'),
+                        hovertemplate='%{x}: <b>%{y:.4f}%</b><extra></extra>'
+                    ))
+                    fig_yield.add_trace(go.Scatter(
+                        x=valid_tenors, y=yest_vals,
+                        name=f'昨日 ({pd.Timestamp(yest_dt).strftime("%m-%d")})',
+                        line=dict(color='#94a3b8', width=1.5, dash='dot'),
+                        mode='lines+markers',
+                        marker=dict(size=5, symbol='circle-open'),
+                        hovertemplate='%{x}: <b>%{y:.4f}%</b><extra></extra>'
+                    ))
+
+                    # 计算10Y-1Y期限利差
+                    spread_today = None
+                    spread_yest  = None
+                    spread_chg   = None
+                    try:
+                        idx_10y = valid_tenors.index('10年')
+                        idx_1y  = valid_tenors.index('1年')
+                        spread_today = today_vals[idx_10y] - today_vals[idx_1y]
+                        spread_yest  = yest_vals[idx_10y] - yest_vals[idx_1y]
+                        spread_chg   = (spread_today - spread_yest) * 100  # BP
+                    except Exception:
+                        pass
+
+                    spread_ann = ''
+                    if spread_today is not None:
+                        spread_ann = f'  |  10Y-1Y 期限利差: {spread_today:.4f}%'
+                        if spread_chg is not None:
+                            arrow = '▲' if spread_chg > 0 else ('▼' if spread_chg < 0 else '──')
+                            clr = '#ef4444' if spread_chg > 0 else '#00b865'
+                            spread_ann += f' <span style="color:{clr};">{arrow} {abs(spread_chg):.1f} BP</span>'
+
+                    fig_yield.update_layout(
+                        height=300,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        template='plotly_dark',
+                        legend=dict(orientation='h', y=1.08, x=0, font=dict(size=11)),
+                        xaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='期限'),
+                        yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='收益率 (%)', tickformat='.3f'),
+                        hovermode='x unified',
+                        annotations=[
+                            dict(
+                                x=0.99, y=0.99, xref='paper', yref='paper',
+                                text=f'最新: 10Y = {today_vals[valid_tenors.index("10年")]:.4f}%' if '10年' in valid_tenors else '',
+                                showarrow=False, font=dict(size=11, color='#ef4444'),
+                                xanchor='right', yanchor='top'
+                            )
+                        ]
+                    )
+
+                    # 双列布局：左图 + 右侧利差数据框
+                    col_chart, col_stats = st.columns([2.5, 1])
+                    with col_chart:
+                        st.plotly_chart(apply_institutional_axes(fig_yield), width="stretch", key="v11_bond_yield")
+                    with col_stats:
+                        st.markdown("**利差快览**")
+                        # 今日关键期限表格
+                        rows_html = ''
+                        for tl, tv, yv in zip(valid_tenors, today_vals, yest_vals):
+                            diff_bp = (tv - yv) * 100
+                            if diff_bp > 0:
+                                diff_str = f'<span class="rate-up">▲{diff_bp:.1f}BP</span>'
+                            elif diff_bp < 0:
+                                diff_str = f'<span class="rate-dn">▼{abs(diff_bp):.1f}BP</span>'
+                            else:
+                                diff_str = '<span class="rate-neu">──</span>'
+                            rows_html += (
+                                f'<tr>'
+                                f'<td>{tl}</td>'
+                                f'<td class="num rate-val">{tv:.4f}%</td>'
+                                f'<td class="num">{diff_str}</td>'
+                                f'</tr>'
+                            )
+                        st.markdown(
+                            f'<table class="inst-table">'
+                            f'<tr><th>期限</th><th class="num">收益率</th><th class="num">日变动</th></tr>'
+                            f'{rows_html}</table>',
+                            unsafe_allow_html=True
+                        )
+                        if spread_today is not None:
+                            st.markdown(
+                                f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:8px;">'
+                                f'<b>10Y-1Y 期限利差</b>: '
+                                f'<span style="color:#38bdf8; font-family:monospace; font-weight:700;">{spread_today:.4f}%</span>'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+
+                    # 自动分析段落
+                    if spread_today is not None and spread_chg is not None:
+                        trend_word = '走阔' if spread_chg > 0 else ('收窄' if spread_chg < 0 else '持平')
+                        render_chart_caption(
+                            data_fact=f"今日中债10年期国债收益率为 {today_vals[valid_tenors.index('10年')]:.4f}%" if '10年' in valid_tenors else "中债国债收益率已更新",
+                            chg_desc=f"10Y-1Y 期限利差 {trend_word} {abs(spread_chg):.1f} BP，当前利差 {spread_today:.4f}%",
+                            attribution="期限利差走阔通常预示市场对经济复苏信心增强，长端需求趋弱；利差收窄则反映资金向长端避险或经济预期走弱",
+                            outlook="持续关注央行公开市场操作与MLF续作情况，长端利率中枢或受地方债供给压力与资金面松紧共同主导"
+                        )
+            else:
+                st.info("国债收益率曲线数据不足，需要至少2个交易日数据进行对比。")
+        else:
+            st.warning("中债国债收益率数据暂时无法获取。")
+
+        st.markdown("---")
+
+        # ── D. 利率→股市估值传导说明框 ─────────────────────────────────
+        try:
+            rf_rate = None
+            if bond_result is not None:
+                df_bond, bond_cols = bond_result
+                unique_dates_d = sorted(df_bond[bond_cols[1]].unique())
+                if unique_dates_d:
+                    row_d = df_bond[df_bond[bond_cols[1]] == unique_dates_d[-1]].iloc[0]
+                    tenor_map = dict(zip(bond_cols[2:], ['3月','6月','1年','3年','5年','7年','10年','30年']))
+                    for tc in bond_cols[2:]:
+                        tl = tenor_map.get(tc, '')
+                        if '10年' in tl or '10' in str(tc):
+                            try:
+                                rf_rate = float(row_d[tc])
+                            except Exception:
+                                pass
+                            break
+            if rf_rate is None:
+                rf_rate = 2.0  # 默认回退值
+            implied_pe = round(100.0 / rf_rate, 1) if rf_rate > 0 else 50.0
+            st.markdown(
+                f'<div class="rate-relay-box">'
+                f'<strong>📡 利率→估值传导提示</strong>（根据 DCF 分母倒数原理）<br>'
+                f'当前 <strong>10年期中债国债收益率 = {rf_rate:.4f}%</strong>（无风险利率代理指标）<br>'
+                f'理论股权风险溢价（ERP）约 <strong>3.0% ~ 5.0%</strong>（A股历史均值区间）<br>'
+                f'合理 PE 上限 ≈ <strong>1 ÷ (无风险利率 + ERP) = {round(100.0/(rf_rate+3.5),1)}x ~ {round(100.0/(rf_rate+2.0),1)}x</strong><br>'
+                f'<span style="color:#64748b; font-size:0.78rem;">当利率上行时，估值分母扩大 → 合理 PE 中枢下移；利率下行时反之。此为参考推演，非投资建议。</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        except Exception:
+            pass
 
 
 # ============================================================================
@@ -3004,6 +3512,26 @@ body::after {{
     font-size: 0.66rem; color: rgba(139, 147, 167, 0.38);
     letter-spacing: 1px; pointer-events: none; z-index: 9999;
 }}
+/* V11 · 图表配套分析段落样式（借鉴固收资金面日报的 .ana 模式）：
+   左侧蓝色竖线 + 深底卡片，全站所有"图后解读"统一使用 */
+.ana-note {{
+    background: rgba(11, 17, 32, 0.55);
+    border-left: 3px solid #4B9FFF;
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    line-height: 1.85;
+    color: #D1D4DC;
+    margin: 10px 0 6px 0;
+}}
+/* V11 · 表格机构细节（借鉴日报）：首列左对齐、数值列右对齐衬线体、行 hover */
+.stMarkdown table {{ border-collapse: collapse; width: 100%; }}
+.stMarkdown table th {{ color: #8B93A7; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.15); }}
+.stMarkdown table th:first-child, .stMarkdown table td:first-child {{ text-align: left; }}
+.stMarkdown table td:not(:first-child) {{
+    text-align: right; font-family: 'Times New Roman', Times, serif;
+}}
+.stMarkdown table tr:hover td {{ background: rgba(75, 159, 255, 0.06); }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -3591,6 +4119,261 @@ except Exception as e:
     print("[macro_board ERROR]", repr(e))
     _tb.print_exc()
     st.warning(f"宏观资金面模块暂时异常: {type(e).__name__}")
+
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# ============================================================================
+# --- 4.44 V11：资金面与利率监控室（借鉴专业固收资金面日报）---
+# 利率是股票估值的分母。本模块提供：无风险利率锚（10Y 国债，大字主视觉）、
+# Shibor 全期限走势与期限结构表、中债国债收益率曲线（今日 vs 前一交易日）、
+# 中美 10Y 利差，以及"利率→估值分母"的客观传导说明。全部真实接口，缺数据即明示。
+# ============================================================================
+_SHIBOR_TENORS = ["O/N", "1W", "2W", "1M", "3M", "6M", "9M", "1Y"]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_shibor_history(n_days: int = 180) -> pd.DataFrame:
+    """Shibor 全期限历史（中国货币网，含定价与涨跌幅）。"""
+    df = _fetch_with_timeout(ak.macro_china_shibor_all, timeout_s=25, default=None)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame()
+    return df.tail(n_days).copy()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_riskfree_rate():
+    """无风险利率锚：中国 10Y 国债收益率。
+    首选东财中美国债序列（附带美债 10Y 可算利差）；降级中债收益率曲线 10Y。"""
+    try:
+        _sd = (datetime.datetime.now() - datetime.timedelta(days=40)).strftime("%Y%m%d")
+        df = _fetch_with_timeout(ak.bond_zh_us_rate, kwargs={"start_date": _sd},
+                                 timeout_s=25, default=None)
+        if df is not None and isinstance(df, pd.DataFrame) and not df.empty and "中国国债收益率10年" in df.columns:
+            d = df.dropna(subset=["中国国债收益率10年"])
+            if not d.empty:
+                row, prev = d.iloc[-1], (d.iloc[-2] if len(d) > 1 else None)
+                us10 = row.get("美国国债收益率10年")
+                try:
+                    us10 = float(us10) if us10 is not None and pd.notna(us10) else None
+                except Exception:
+                    us10 = None
+                return dict(date=str(row["日期"]), cn10=float(row["中国国债收益率10年"]),
+                            cn10_prev=(float(prev["中国国债收益率10年"]) if prev is not None else None),
+                            us10=us10, source="东方财富·中美国债收益率序列")
+    except Exception:
+        pass
+    try:
+        _end = datetime.datetime.now()
+        _start = _end - datetime.timedelta(days=12)
+        df = _fetch_with_timeout(ak.bond_china_yield,
+                                 kwargs={"start_date": _start.strftime("%Y%m%d"),
+                                         "end_date": _end.strftime("%Y%m%d")},
+                                 timeout_s=25, default=None)
+        if df is not None and not df.empty:
+            c = df[df["曲线名称"].astype(str).str.contains("国债")]
+            if not c.empty and "10年" in c.columns:
+                row = c.dropna(subset=["10年"]).iloc[-1]
+                return dict(date=str(row["日期"]), cn10=float(row["10年"]),
+                            cn10_prev=None, us10=None, source="中债·国债收益率曲线")
+    except Exception:
+        pass
+    return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_cgb_curves():
+    """中债国债收益率曲线：最近两个交易日（今日 vs 前一交易日）。"""
+    _end = datetime.datetime.now()
+    _start = _end - datetime.timedelta(days=12)
+    df = _fetch_with_timeout(ak.bond_china_yield,
+                             kwargs={"start_date": _start.strftime("%Y%m%d"),
+                                     "end_date": _end.strftime("%Y%m%d")},
+                             timeout_s=25, default=None)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return None
+    c = df[df["曲线名称"].astype(str).str.contains("国债")].copy()
+    if c.empty:
+        return None
+    dates = sorted(pd.to_datetime(c["日期"]).dt.strftime("%Y-%m-%d").unique())
+    if len(dates) < 2:
+        return None
+    def _row(ds):
+        r = c[pd.to_datetime(c["日期"]).dt.strftime("%Y-%m-%d") == ds].iloc[0]
+        return {t: float(r[t]) for t in ["3月", "6月", "1年", "3年", "5年", "7年", "10年", "30年"] if t in c.columns and pd.notna(r.get(t))}
+    return dict(today=_row(dates[-1]), prev=_row(dates[-2]),
+                today_date=dates[-1], prev_date=dates[-2])
+
+
+def _shibor_analysis(shb: pd.DataFrame) -> str:
+    """Shibor 走势的规则化客观解读（真实数值拼接，非主观预测）。"""
+    try:
+        last = shb.iloc[-1]
+        on = float(last.get("O/N-定价") or 0) or None
+        on_chg = float(last.get("O/N-涨跌幅") or 0) if pd.notna(last.get("O/N-涨跌幅")) else None
+        y1 = float(last.get("1Y-定价") or 0) or None
+        parts = [f"最新交易日（{str(last['日期'])[:10]}）：隔夜 Shibor 报 <b>{on:.4f}%</b>"
+                 + (f"（环比 <b>{on_chg:+.2f}BP</b>）" if on_chg is not None else "")
+                 + (f"，1 年期报 <b>{y1:.4f}%</b>。" if y1 else "。")]
+        if on is not None and y1 is not None:
+            spread = (y1 - on) * 100
+            if spread > 40:
+                parts.append(f"期限利差（1Y − O/N）约 <b>{spread:.1f}BP</b>，曲线偏陡，反映市场对资金面阶段性收敛或政策利率中枢的定价。")
+            else:
+                parts.append(f"期限利差（1Y − O/N）约 <b>{spread:.1f}BP</b>，曲线平坦，资金面预期稳定。")
+        parts.append("客观传导：短端利率是股票估值分母（贴现率）的边际变量之一——短端抬升通常压制高久期成长资产估值，宽松则相反；此处仅为传导机制描述，非方向判断。")
+        return "".join(parts)
+    except Exception:
+        return "Shibor 数据解析异常，暂无法生成解读。"
+
+
+def _curve_analysis(cv: dict) -> str:
+    """国债收益率曲线 今日 vs 前一交易日 的规则化客观解读。"""
+    try:
+        t, p = cv["today"], cv["prev"]
+        segs = []
+        for ten in ("1年", "10年"):
+            if ten in t and ten in p and p[ten]:
+                chg = (t[ten] - p[ten]) * 100
+                segs.append(f"{ten} {t[ten]:.3f}%（<b>{chg:+.2f}BP</b>）")
+        steep = None
+        if all(k in t and k in p and t[k] and p[k] for k in ("1年", "10年")):
+            steep = (t["10年"] - t["1年"]) - (p["10年"] - p["1年"])
+        txt = f"对比 {cv['prev_date']} → {cv['today_date']}：{'，'.join(segs) or '关键期限数据缺失'}。"
+        if steep is not None and abs(steep) >= 0.0005:
+            txt += f"10Y−1Y 期限利差变动 <b>{steep*100:+.2f}BP</b>，曲线{'陡峭化' if steep > 0 else '平坦化'}。"
+        elif steep is not None:
+            txt += "期限利差基本持平，曲线形态稳定。"
+        txt += "无风险利率（10Y）是全市场资产定价之锚：其上行抬升股权资产的贴现分母，对高估值成长股的压制弹性历史上大于价值股；下行则反之。"
+        return txt
+    except Exception:
+        return "收益率曲线数据解析异常，暂无法生成解读。"
+
+
+def render_rates_monitor():
+    rf = fetch_riskfree_rate()
+    shb = fetch_shibor_history()
+    cv = fetch_cgb_curves()
+
+    st.markdown("### 🏦 资金面与利率监控室 <span style='font-size:0.78rem; opacity:0.6;'>(利率 = 股票估值的分母 · 对标固收资金面日报)</span>", unsafe_allow_html=True)
+    st.caption("无风险利率 / Shibor / 中债收益率曲线均为真实接口数据；利率传导说明为客观机制描述，不构成任何利率或行情预测。")
+
+    # ===== 主视觉：无风险收益率大字 + Shibor 关键期限 + 中美利差 =====
+    rf_c1, rf_c2, rf_c3 = st.columns([1.35, 1, 1], vertical_alignment="center")
+    with rf_c1:
+        if rf:
+            chg_bp = ((rf["cn10"] - rf["cn10_prev"]) * 100) if rf.get("cn10_prev") is not None else None
+            chg_html = (f'<span style="font-size:0.95rem; color:{C_UP if chg_bp >= 0 else C_DOWN};">{chg_bp:+.2f}BP / 日</span>' if chg_bp is not None else "")
+            st.markdown(f"""
+<div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(10px); border-radius:12px; padding:16px 22px;">
+  <div style="font-size:0.78rem; color:#8B93A7; letter-spacing:1px;">⚖️ 无风险利率锚 · 中国 10Y 国债收益率</div>
+  <div style="font-size:2.7rem; font-weight:900; color:#00F2FE; line-height:1.15; text-shadow:0 0 18px rgba(0,242,254,0.28); font-family:'JetBrains Mono',monospace;">{rf['cn10']:.4f}<span style="font-size:1.3rem;">%</span></div>
+  <div style="font-size:0.75rem; color:#8B93A7;">{rf['date']} · {rf['source']} · {chg_html}</div>
+  <div style="font-size:0.72rem; color:#8B93A7; margin-top:4px;">全站 PE / 情景推演的估值分母基准</div>
+</div>
+""", unsafe_allow_html=True)
+        else:
+            st.info("10Y 国债收益率（无风险利率锚）真实数据缺失，不做任何填充。")
+    with rf_c2:
+        if not shb.empty:
+            last = shb.iloc[-1]
+            def _kpi(lbl, col, chg_col):
+                try:
+                    _v, _c = float(last.get(col)), float(last.get(chg_col) or 0)
+                except Exception:
+                    return ""
+                return f"""<div style="background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px 14px; margin-bottom:8px;">
+<div style="font-size:0.75rem; color:#8B93A7;">{lbl}</div>
+<div style="font-size:1.35rem; font-weight:800; color:#F0F3FA; font-family:'JetBrains Mono',monospace;">{_v:.4f}%</div>
+<div style="font-size:0.72rem; color:{C_UP if _c >= 0 else C_DOWN};">{_c:+.2f}BP / 日</div></div>"""
+            st.markdown(_kpi("Shibor 隔夜 (O/N)", "O/N-定价", "O/N-涨跌幅") + _kpi("Shibor 1 年", "1Y-定价", "1Y-涨跌幅"), unsafe_allow_html=True)
+    with rf_c3:
+        if rf and rf.get("us10"):
+            spread = rf["cn10"] - rf["us10"]
+            st.markdown(f"""
+<div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(10px); border-radius:12px; padding:14px 18px;">
+  <div style="font-size:0.75rem; color:#8B93A7; letter-spacing:1px;">🌍 中美 10Y 利差（中 − 美）</div>
+  <div style="font-size:1.9rem; font-weight:900; color:{C_UP if spread >= 0 else C_DOWN}; font-family:'JetBrains Mono',monospace;">{spread*100:+.1f}<span style="font-size:1rem;">BP</span></div>
+  <div style="font-size:0.72rem; color:#8B93A7; margin-top:2px;">中 {rf['cn10']:.2f}% vs 美 {rf['us10']:.2f}% · 影响跨境资金与汇率预期</div>
+</div>
+""", unsafe_allow_html=True)
+
+    # ===== Shibor 全期限走势（近 180 日）=====
+    if not shb.empty:
+        st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+        st.markdown("#### 📈 Shibor 全期限走势（近 180 日）")
+        fig_s = go.Figure()
+        for ten in ["O/N", "1W", "1M", "3M", "6M", "1Y"]:
+            col = f"{ten}-定价"
+            if col in shb.columns:
+                fig_s.add_trace(go.Scatter(x=shb["日期"], y=shb[col], name=ten,
+                                           line=dict(width=1.4), hovertemplate=f"{ten} %{{y:.4f}}%<extra></extra>"))
+        fig_s.update_layout(height=300, template="plotly_dark",
+                            margin=dict(l=40, r=20, t=30, b=20),
+                            paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+                            legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5, font=dict(size=9)),
+                            yaxis=dict(title="利率 (%)", title_font=dict(size=9), gridcolor="rgba(255,255,255,0.05)"))
+        st.plotly_chart(apply_institutional_axes(fig_s), width="stretch", config={"displayModeBar": False})
+        st.markdown(f'<div class="ana-note">📊 {_shibor_analysis(shb)}</div>', unsafe_allow_html=True)
+
+        # ===== Shibor 期限结构表（最新交易日）=====
+        st.markdown("#### 🧾 Shibor 期限结构（最新交易日）")
+        rows_html = ""
+        last = shb.iloc[-1]
+        for ten in _SHIBOR_TENORS:
+            pr, chg = last.get(f"{ten}-定价"), last.get(f"{ten}-涨跌幅")
+            if pr is None or pd.isna(pr):
+                continue
+            try:
+                chg_v = float(chg) if chg is not None and pd.notna(chg) else None
+            except Exception:
+                chg_v = None
+            chg_cell = (f'<td style="color:{C_UP if chg_v >= 0 else C_DOWN}; font-weight:700;">{chg_v:+.2f} BP</td>'
+                        if chg_v is not None else '<td style="color:#8B93A7;">—</td>')
+            rows_html += (f'<tr><td style="text-align:left; font-weight:600;">{ten}</td>'
+                          f'<td>{float(pr):.4f}%</td>{chg_cell}</tr>')
+        st.markdown(f"""
+<table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin:8px 0;">
+<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.15); color:#8B93A7;">
+<th style="text-align:left; padding:6px 10px;">期限</th><th style="padding:6px 10px; text-align:right;">定价</th>
+<th style="padding:6px 10px; text-align:right;">环比</th></tr></thead>
+<tbody style="color:#D1D4DC;">{rows_html}</tbody></table>
+""", unsafe_allow_html=True)
+        st.caption("数据来源：中国货币网 Shibor（利率上行标红、下行标绿，中国金融惯例，跟随全站配色开关）")
+
+    # ===== 中债国债收益率曲线：今日 vs 前一交易日 =====
+    if cv:
+        st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+        st.markdown("#### 📐 中债国债收益率曲线（今日 vs 前一交易日）")
+        c1, c2 = st.columns([1.6, 1], vertical_alignment="center")
+        with c1:
+            tenors = ["3月", "6月", "1年", "3年", "5年", "7年", "10年", "30年"]
+            fig_c = go.Figure()
+            fig_c.add_trace(go.Scatter(x=tenors, y=[cv["today"].get(t) for t in tenors],
+                                       name=f"今日 {cv['today_date']}", mode="lines+markers",
+                                       line=dict(color=C_ACCENT, width=2.2), marker=dict(size=6)))
+            fig_c.add_trace(go.Scatter(x=tenors, y=[cv["prev"].get(t) for t in tenors],
+                                       name=f"前一日 {cv['prev_date']}", mode="lines+markers",
+                                       line=dict(color="#8B93A7", width=1.6, dash="dash"), marker=dict(size=5)))
+            fig_c.update_layout(height=300, template="plotly_dark",
+                                margin=dict(l=40, r=20, t=30, b=20),
+                                paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+                                legend=dict(orientation="h", yanchor="top", y=-0.12, xanchor="center", x=0.5, font=dict(size=9)),
+                                yaxis=dict(title="收益率 (%)", title_font=dict(size=9), gridcolor="rgba(255,255,255,0.05)"))
+            st.plotly_chart(apply_institutional_axes(fig_c), width="stretch", config={"displayModeBar": False})
+        with c2:
+            st.markdown(f'<div class="ana-note">📐 {_curve_analysis(cv)}</div>', unsafe_allow_html=True)
+
+    # ===== 利率 → 估值分母传导说明 =====
+    st.markdown('<div class="ana-note">🔗 <b>利率与你的持仓的关系（客观传导框架）</b>：无风险利率是 DCF 估值的分母起点——利率下行降低折现率、抬升远期现金流的现值，高久期成长资产（高 PE、盈利后置）估值弹性最大；利率上行则反向。10Y 国债的边际变动对成长股合理 PE 的影响显著大于对低 PE 价值股。本监控室的所有说明均为机制描述，不构成任何利率走势或买卖判断。</div>', unsafe_allow_html=True)
+
+
+try:
+    render_rates_monitor()
+except Exception as e:
+    import traceback as _tb
+    print("[rates_monitor ERROR]", repr(e))
+    _tb.print_exc()
+    st.warning(f"资金面与利率监控室暂时异常: {type(e).__name__}")
 
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
