@@ -14,21 +14,11 @@ from openai import OpenAI
 
 import importlib
 
-# ============================================================================
-# V10.1 全局网络超时护栏：requests 默认 20s 超时
-# akshare 全系列接口不传 timeout，接口挂起时会让 Streamlit 脚本无限阻塞
-# （实测：周末 stock_info_a_code_name 的 SSL 读挂起导致整页卡死在研报区）。
-# 本补丁仅对未显式指定 timeout 的请求生效，不影响自带超时的库。
-# ============================================================================
-import requests as _rq_mod
-
-def _request_default_timeout(self, method, url, **kwargs):
-    kwargs.setdefault("timeout", 20)
-    return _rq_mod.Session.__orig_request__(self, method, url, **kwargs)
-
-_rq_mod.Session.__orig_request__ = _rq_mod.Session.request
-_rq_mod.Session.request = _request_default_timeout
-
+st.set_page_config(
+    page_title="Anti Stock Report - 智能投研终端",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 # ============================================================================
 # ▼▼▼ 内联模块：fundamentals.py  （原独立文件，V7 单文件版已合并至此）
@@ -3225,12 +3215,6 @@ crowdsource_agent = _self_mod
 # 初始化全局变量，防止 "name 'all_data' is not defined" 报错
 all_data = {}
 api_key_input = st.session_state.get("api_key_state", "")
-
-st.set_page_config(
-    page_title="Anti Stock Report - 智能投研终端",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
 
 # 注入全局 UI 优化 CSS 与前端全套防盗/防右键/防 F12 保护网
 st.markdown("""
