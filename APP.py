@@ -1395,7 +1395,7 @@ def apply_institutional_axes(fig):
     return fig
 
 
-def build_eps_surprise_chart(rows, height=300):
+def build_eps_surprise_chart(rows, height=300, is_usd=False):
     """过往各期 EPS 预期 vs 实际对比；超预期=沉稳绿，不及预期=警示红。"""
     rows = [r for r in (rows or []) if r.get("rep") is not None]
     if not rows:
@@ -1419,13 +1419,14 @@ def build_eps_surprise_chart(rows, height=300):
                          hovertemplate="实际 %{y:.3f}<extra></extra>"))
     fig.update_layout(
         height=height, template="plotly_dark", barmode="group",
-        # V10 P3/P5：机构级四周留白（t=60 b=80 l=40 r=40），杜绝文字挤压重叠
-        margin=dict(t=60, b=80, l=40, r=40), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
-        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5,
-                    font=dict(size=9)),
-        yaxis=dict(title="EPS", title_font=dict(size=9), gridcolor="rgba(255,255,255,0.05)"),
-        # V10 P3/P5：底部日期标签 45° 倾斜，长标签不再互相叠压
-        xaxis=dict(tickfont=dict(size=9), tickangle=-45),
+        # P5：修复柱状图极度挤压和左侧留白，紧凑四周留白
+        margin=dict(t=30, b=50, l=40, r=20), paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0,
+                    font=dict(size=10)),
+        yaxis=dict(title="EPS (元/股)" if not is_usd else "EPS ($)", title_font=dict(size=10), gridcolor="rgba(255,255,255,0.08)"),
+        # P5：强制分类轴，消除空月份间隔
+        xaxis=dict(type="category", tickfont=dict(size=10), tickangle=-20),
+        bargap=0.3, bargroupgap=0.1
     )
     return apply_institutional_axes(fig)
 
@@ -2489,9 +2490,19 @@ def save_news_cache(news_list):
             if (now - item_time).total_seconds() <= 3600 * 72:
                 valid_news.append(item)
         except Exception:
-            valid_news.append(item) # 解析失败暂保留
+            valid_news.append(item)
 
-    # 按照时间倒序排序
+    is_usd = bool(currency in ["USD", "$"])
+    price_lbl = "$" if is_usd else "元"
+    
+    def fmt_calc_price(val):
+        if not val or val <= 0:
+            return "数据缺失"
+        if is_usd:
+            return f"${val:,.2f}"
+        else:
+            return f"{val:,.2f} 元"
+
     valid_news.sort(key=lambda x: x.get('time_str', ''), reverse=True)
     try:
         with open(CACHE_FILE, "w", encoding="utf-8") as f:
@@ -3004,18 +3015,18 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
             st.plotly_chart(fig_scn, width="stretch", config={'displayModeBar': False})
 
         render_kpi_grid([
-            dict(label="推演合理股价区间", value=f"{price_lbl}{min_p:,.2f} ~ {price_lbl}{max_p:,.2f}",
-                 sub=f"当前实际股价 {price_lbl}{price:,.2f}", value_direction="accent"),
+            dict(label="推演合理股价区间", value=f"{fmt_calc_price(min_p)} ~ {fmt_calc_price(max_p)}",
+                 sub=f"当前实际股价 {fmt_calc_price(price)}", value_direction="accent"),
             dict(label="推演目标市值区间", value=f"{min_m:,.2f}亿 ~ {max_m:,.2f}亿",
                  sub=f"{curr_zh} · 股本基准 {shares_in_100m:.2f} 亿股"),
             dict(label="PE 法推演价",
-                 value=(f"{price_lbl}{pe_price:,.2f}" if pe_price > 0 else "同业 PE 缺失"),
+                 value=(fmt_calc_price(pe_price) if pe_price > 0 else "同业 PE 缺失"),
                  sub=(f"预测净利 × 同业 PE {ref_pe:.2f}x" if ref_pe else "无真实同业 PE，不推演")),
             dict(label="PB 法推演价",
-                 value=(f"{price_lbl}{pb_price:,.2f}" if pb_price > 0 else "同业 PB 缺失"),
+                 value=(fmt_calc_price(pb_price) if pb_price > 0 else "同业 PB 缺失"),
                  sub=(f"预测净资产 × 同业 PB {ref_pb:.2f}x" if ref_pb else "无真实同业 PB，不推演")),
             dict(label="PS 法推演价",
-                 value=(f"{price_lbl}{ps_price:,.2f}" if ps_price > 0 else "同业 PS 缺失"),
+                 value=(fmt_calc_price(ps_price) if ps_price > 0 else "同业 PS 缺失"),
                  sub=(f"预测营收 × 同业 PS {ref_ps:.2f}x" if ref_ps else "无真实同业 PS，不推演")),
             dict(label="中性情景相对现价",
                  value=(f"{(base_mid - price)/price*100:+.1f}%" if (price and base_mid) else "数据缺失"),
@@ -3152,7 +3163,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                 
             if price_list:
                 med_prc = np.median(price_list)
-                c3_s.metric("一致预期合理股价 (中位数)", f"{price_lbl}{med_prc:.2f}")
+                c3_s.metric("一致预期合理股价 (中位数)", fmt_calc_price(med_prc))
             else:
                 c3_s.metric("一致预期合理股价", "N/A")
                 
@@ -4422,14 +4433,22 @@ def fetch_macro_calendar_events() -> list:
                 if not name or not any(k.lower() in name.lower() for k in _MACRO_KEY_EVENTS):
                     continue
                 region = str(r.get(region_col, "全球")).strip() if region_col else "全球"
+                
+                TIER1_EVENTS = ["非农", "ADP", "失业率", "FOMC", "议息", "利率决议", "CPI", "PCE", "GDP"]
+                tier1 = (region in ["美国", "中国"]) and any(k in name for k in TIER1_EVENTS)
+                
                 tm = str(r.get(time_col, "")).strip()[:5] if time_col else ""
                 imp_raw = r.get(imp_col) if imp_col else None
                 try:
                     imp_n = int(float(imp_raw)) if imp_raw is not None and str(imp_raw) not in ("nan", "") else 2
                 except Exception:
                     imp_n = 2
+                
+                if tier1:
+                    imp_n = max(imp_n, 4)
+                
                 events.append({
-                    "_imp": imp_n, "_off": off,
+                    "_imp": imp_n, "_off": off, "tier1": tier1,
                     "date": _d.strftime("%m-%d"), "time": tm, "region": region,
                     "title": name[:40], "importance": "高" if imp_n >= 3 else ("中" if imp_n == 2 else "低"),
                     "expected": _mcal_fmt(r.get(exp_col)) if exp_col else None,
@@ -4483,15 +4502,30 @@ def render_macro_calendar():
     st.markdown("### 🗓️ 宏观大事日历 <span style='font-size:0.78rem; opacity:0.6;'>(未来 7 天 · 事件驱动核心参考)</span>", unsafe_allow_html=True)
     st.caption("对标华尔街见闻/金十数据的事件驱动视角：左栏选择事件，右栏查看客观数据与影响链条。仅客观聚合，不构成任何投资建议。")
 
-    cal_c1, cal_c2 = st.columns([1, 2])
+    cal_c1, cal_c2 = st.columns([1, 2], vertical_alignment="top")
     with cal_c1:
-        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">📌 重点事件 · 上一交易日回顾 + 未来排期</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px; line-height:1.5;">📌 重点事件 · 上一交易日回顾 + 未来排期</div>', unsafe_allow_html=True)
         for i, ev in enumerate(evs):
             sel = st.session_state.get("mcal_sel", 0) == i
-            bg = "#1E222D" if not sel else "rgba(41, 98, 255, 0.22)"
-            bd = "#2B3139" if not sel else "#4B9FFF"
-            if st.button(f"{ev['date']} ｜ {ev['region']} ｜ {ev['title']}",
-                         key=f"mcal_btn_{i}", width="stretch"):
+            tier1 = ev.get("tier1", False)
+            btn_title = f"{ev['date']} ｜ {ev['region']} ｜ {ev['title']}"
+            
+            if tier1:
+                prefix = "🔥【重磅】"
+                if "非农" in ev['title'] or "失业" in ev['title'] or "ADP" in ev['title']: prefix = "🔥【重磅·大非农】"
+                elif "FOMC" in ev['title'] or "议息" in ev['title'] or "决议" in ev['title']: prefix = "⚡【重磅·美联储】"
+                elif "CPI" in ev['title'] or "PCE" in ev['title'] or "GDP" in ev['title']: prefix = "📊【核心·宏观】"
+                btn_title = f"{prefix} {ev['date']} ｜ {ev['region']} ｜ {ev['title']}"
+                st.markdown(f"""
+                <style>
+                div.stButton > button[key="mcal_btn_{i}"] {{
+                    border: 1.5px solid #FF4B4B !important;
+                    background: linear-gradient(90deg, rgba(239,68,68,0.2) 0%, rgba(30,41,59,0.8) 100%) !important;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+            
+            if st.button(btn_title, key=f"mcal_btn_{i}", use_container_width=True):
                 st.session_state.mcal_sel = i
                 st.rerun()
             # 选中态高亮提示（按钮本体无法直接改色，用底部标记条区分）
@@ -4503,12 +4537,15 @@ def render_macro_calendar():
     with cal_c2:
         # V10.3 P6：右栏加与左栏同规格的小标题，两栏首行对齐（右栏详情卡随之下移，
         # 上沿与左侧第一个事件按钮的上沿水平对齐）
-        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px;">🔍 事件详情 · 客观影响解读</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px; line-height:1.5;">🔍 事件详情 · 客观影响解读</div>', unsafe_allow_html=True)
         ev = evs[st.session_state.get("mcal_sel", 0)] if evs else None
         if ev:
+            tier1 = ev.get("tier1", False)
+            tier1_banner = '<div style="background: rgba(239,68,68,0.15); border: 1px solid #FF4B4B; color: #FF4B4B; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 12px; font-size: 0.9rem;">⚠️ 全球金融市场一级核弹数据 · 波动率爆发预警</div>' if tier1 else ''
             _mrow = lambda lbl, v: f"<div style='display:inline-block; margin-right:18px;'><span style='color:#8B93A7; font-size:0.78rem;'>{lbl}</span><br><b style='color:#F0F3FA;'>{v if v is not None else '—'}</b></div>"
             st.markdown(f"""
 <div style="background:#1E222D; border:1px solid #2B3139; border-radius:12px; padding:18px; margin-bottom:12px;">
+{tier1_banner}
 <div style="font-size:0.78rem; color:#8B93A7;">事件 · {ev['date']} {ev.get('time','')} · 重要性 {ev.get('importance','—')}</div>
 <div style="font-size:1.25rem; font-weight:800; color:#F0F3FA; margin:6px 0;">{ev['region']} · {ev['title']}</div>
 <div style="margin:10px 0 4px 0;">
@@ -5856,16 +5893,16 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                                 fig_donut = px.pie(df_pie, values='Value', names='Label', hole=0.65,
                                                    color='Label', color_discrete_map=dict(zip(labels, colors)))
                                 fig_donut.update_layout(
-                                    height=230, margin=dict(l=0, r=0, t=8, b=8),
+                                    height=240, margin=dict(l=10, r=10, t=15, b=35),
                                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                                     showlegend=True,
-                                    legend=dict(orientation="h", yanchor="bottom", y=-0.08,
-                                                xanchor="center", x=0.5, font=dict(size=9)),
+                                    legend=dict(orientation="h", yanchor="top", y=-0.12,
+                                                xanchor="center", x=0.5, font=dict(size=10)),
                                     annotations=[dict(text=f'{total_analysts} 位<br>分析师', x=0.5, y=0.5,
                                                       font_size=12, showarrow=False,
                                                       font=dict(color='#D1D4DC'))]
                                 )
-                                fig_donut.update_traces(textinfo='percent', textfont_size=10,
+                                fig_donut.update_traces(textinfo='percent', textposition='outside', textfont_size=10,
                                                         hoverinfo='label+value')
                                 st.plotly_chart(fig_donut, width="stretch", config={'displayModeBar': False})
                             else:
@@ -6145,7 +6182,8 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                              direction=("down" if (_c2o or 0) >= 0.5 else "up") if _c2o is not None else "neutral"),
                     ], cols=2)
                 with ex_c2:
-                    fig_eps = build_eps_surprise_chart(eps_rows, height=300)
+                    _is_usd = bool(all_data.get('info', {}).get('currency') in ["USD", "$"])
+                    fig_eps = build_eps_surprise_chart(eps_rows, height=300, is_usd=_is_usd)
                     if fig_eps is not None:
                         st.plotly_chart(fig_eps, width="stretch", config={'displayModeBar': False})
                         tags = []
