@@ -3335,12 +3335,13 @@ st.markdown("""
     /* V12：利率四联快览 —— 等高网格，对齐由 grid 保证，不受 Streamlit 列高影响 */
     .rate-kpi-grid {
         display: grid;
-        grid-template-columns: 1.35fr 1fr 1fr 1fr;
+        grid-template-columns: 1.3fr 1fr 1fr 1fr 1.1fr;
         gap: 10px;
         margin: 10px 0 4px 0;
         align-items: stretch;
     }
-    @media (max-width: 1200px) { .rate-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 1500px) { .rate-kpi-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+    @media (max-width: 1100px) { .rate-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
     @media (max-width: 640px)  { .rate-kpi-grid { grid-template-columns: 1fr; } }
     .rate-kpi {
         background: rgba(30, 41, 59, 0.7);
@@ -3846,6 +3847,46 @@ def fetch_shibor_history(n_days: int = 180) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def fetch_cny_fx(n_days: int = 90):
+    """V12 新增：人民币对美元汇率（中行外汇牌价序列，含央行中间价）。
+
+    资金面监控室原本只覆盖"资金的价格"（Shibor / 国债曲线），
+    缺了"货币的对外价格"这一环——而中美利差卡片本身就把
+    "影响跨境资金流向与汇率预期"写进了说明，却始终没有汇率数据可看。
+    返回 None 表示真实数据缺失，由 UI 层显式提示，不做任何填充。
+    """
+    _sd = (datetime.datetime.now() - datetime.timedelta(days=n_days + 30)).strftime("%Y%m%d")
+    _ed = datetime.datetime.now().strftime("%Y%m%d")
+    df = _fetch_with_timeout(ak.currency_boc_sina,
+                             kwargs={"symbol": "美元", "start_date": _sd, "end_date": _ed},
+                             timeout_s=25, default=None)
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return None
+    col = next((c for c in df.columns if "中间价" in str(c) and "央行" in str(c)), None)
+    if col is None:
+        col = next((c for c in df.columns if "中间价" in str(c)), None)
+    date_col = next((c for c in df.columns if "日期" in str(c)), None)
+    if col is None or date_col is None:
+        return None
+    # 中间价按交易日发布，最新几行常为 NaN（尚未公布），必须取最后一个有效值
+    d = df.dropna(subset=[col])
+    if d.empty:
+        return None
+    d = d.tail(n_days).copy()
+    # 中行牌价以"每 100 外币折合人民币"报价，换算为直观的 CNY / USD
+    d["_rate"] = d[col].astype(float) / 100.0
+    last = d.iloc[-1]
+    prev = d.iloc[-2] if len(d) > 1 else None
+    return dict(
+        date=str(last[date_col]),
+        rate=float(last["_rate"]),
+        prev=(float(prev["_rate"]) if prev is not None else None),
+        hist=d[[date_col, "_rate"]].rename(columns={date_col: "日期", "_rate": "中间价"}),
+        source="中国银行外汇牌价·央行中间价",
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_riskfree_rate():
     """无风险利率锚：中国 10Y 国债收益率。
     首选东财中美国债序列（附带美债 10Y 可算利差）；降级中债收益率曲线 10Y。"""
@@ -3968,6 +4009,7 @@ def render_rates_monitor():
     rf = fetch_riskfree_rate()
     shb = fetch_shibor_history()
     cv = fetch_cgb_curves()
+    fx = fetch_cny_fx()
 
     st.markdown("### 🏦 资金面与利率监控室 <span style='font-size:0.78rem; opacity:0.6;'>(利率 = 股票估值的分母 · 对标固收资金面日报)</span>", unsafe_allow_html=True)
     st.caption("无风险利率 / Shibor / 中债收益率曲线均为真实接口数据；利率传导说明为客观机制描述，不构成任何利率或行情预测。")
@@ -4026,6 +4068,22 @@ def render_rates_monitor():
 
     _cards.append(_shibor_card("🌙", "Shibor 隔夜 (O/N)", "O/N-定价", "O/N-涨跌幅", "银行间隔夜资金松紧温度计"))
     _cards.append(_shibor_card("📆", "Shibor 1 年", "1Y-定价", "1Y-涨跌幅", "中长端资金成本 · 贷款定价参考"))
+
+    # V12 新增：人民币汇率 —— 补齐"货币对外价格"这一环
+    if fx:
+        _fx_chg = ((fx["rate"] - fx["prev"]) * 10000) if fx.get("prev") is not None else None
+        # 直接标价法下数值上行 = 人民币贬值，配色沿用全站涨跌语义
+        _fx_sub = (f'<span style="color:{C_DOWN if (_fx_chg or 0) > 0 else C_UP}; font-weight:700;">'
+                   f'{_fx_chg:+.0f} 基点 · 人民币{"贬值" if _fx_chg > 0 else "升值"}</span><br>'
+                   if _fx_chg not in (None, 0) else '<span style="color:#8B93A7;">与上一交易日持平</span><br>')
+        _cards.append(_rate_card(
+            "💱", "美元兑人民币 · 央行中间价",
+            f'{fx["rate"]:.4f}',
+            _fx_sub + f'{fx["date"]} · {fx["source"]}'))
+    else:
+        _cards.append(_rate_card("💱", "美元兑人民币 · 央行中间价",
+                                 '<span class="rate-kpi-na">数据缺失</span>',
+                                 "中行外汇牌价接口未返回<br>不以任何假设值替代"))
 
     st.html('<div class="rate-kpi-grid">' + "".join(_cards) + '</div>')
 
@@ -4094,6 +4152,36 @@ def render_rates_monitor():
             st.plotly_chart(apply_institutional_axes(fig_c), width="stretch", config={"displayModeBar": False})
         with c2:
             st.markdown(f'<div class="ana-note">📐 {_curve_analysis(cv)}</div>', unsafe_allow_html=True)
+
+    # ===== V12 新增：人民币汇率走势（货币的对外价格）=====
+    if fx and fx.get("hist") is not None and not fx["hist"].empty:
+        st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
+        st.markdown("#### 💱 美元兑人民币中间价走势（近 90 个交易日）")
+        _fxh = fx["hist"]
+        fig_fx = go.Figure()
+        fig_fx.add_trace(go.Scatter(x=_fxh["日期"].astype(str), y=_fxh["中间价"],
+                                    name="USD/CNY 中间价", mode="lines",
+                                    line=dict(color=C_ACCENT, width=2),
+                                    hovertemplate="%{x} %{y:.4f}<extra></extra>"))
+        fig_fx.update_layout(height=260, template="plotly_dark",
+                             margin=dict(l=40, r=20, t=30, b=20),
+                             paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+                             showlegend=False,
+                             xaxis=dict(type="category", nticks=8, gridcolor="rgba(255,255,255,0.05)"),
+                             yaxis=dict(title="CNY / USD", title_font=dict(size=9),
+                                        gridcolor="rgba(255,255,255,0.05)"))
+        st.plotly_chart(apply_institutional_axes(fig_fx), width="stretch", config={"displayModeBar": False})
+        _fx_hi, _fx_lo = float(_fxh["中间价"].max()), float(_fxh["中间价"].min())
+        _fx_first = float(_fxh["中间价"].iloc[0])
+        _fx_amp = (fx["rate"] - _fx_first) * 10000
+        st.markdown(
+            f'<div class="ana-note">💱 区间内中间价高点 <b>{_fx_hi:.4f}</b>、低点 <b>{_fx_lo:.4f}</b>，'
+            f'最新 <b>{fx["rate"]:.4f}</b>，区间累计变动 <b>{_fx_amp:+.0f} 基点</b>'
+            f'（直接标价法下数值上行即人民币贬值）。客观传导机制：中美利差走阔 → 套息资金外流压力 → '
+            f'人民币承压；汇率贬值预期又会通过外资持仓成本影响 A 股/港股定价。'
+            f'以上为机制描述，不构成任何汇率或行情预测。</div>', unsafe_allow_html=True)
+    elif fx is None:
+        st.info("人民币汇率（央行中间价）真实数据缺失，不做任何填充。")
 
     # ===== 利率 → 估值分母传导说明 =====
     st.markdown('<div class="ana-note">🔗 <b>利率与你的持仓的关系（客观传导框架）</b>：无风险利率是 DCF 估值的分母起点——利率下行降低折现率、抬升远期现金流的现值，高久期成长资产（高 PE、盈利后置）估值弹性最大；利率上行则反向。10Y 国债的边际变动对成长股合理 PE 的影响显著大于对低 PE 价值股。本监控室的所有说明均为机制描述，不构成任何利率走势或买卖判断。</div>', unsafe_allow_html=True)
