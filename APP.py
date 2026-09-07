@@ -2074,390 +2074,6 @@ def render_chart_caption(data_fact: str, chg_desc: str, attribution: str, outloo
     )
 
 
-# ============================================================================
-# V11 新增：资金面与利率监控室
-# ============================================================================
-
-@st.cache_data(ttl=900, show_spinner=False)
-def _fetch_shibor_latest():
-    """获取最新 Shibor 全期限利率数据（akshare macro_china_shibor_all）。"""
-    try:
-        df = ak.macro_china_shibor_all()
-        if df is None or df.empty:
-            return None
-        # 列顺序: 日期, O/N-利率, O/N-涨跌幅, 1W-利率, 1W-涨跌幅, ..., 1Y-利率, 1Y-涨跌幅
-        cols = df.columns.tolist()
-        df = df.tail(30).copy()  # 只保留最近30条
-        return df, cols
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def _fetch_bond_yield_curve():
-    """获取最近2个交易日的中债国债收益率曲线数据。"""
-    try:
-        end_dt = datetime.date.today()
-        start_dt = end_dt - datetime.timedelta(days=15)
-        df = ak.bond_china_yield(
-            start_date=start_dt.strftime('%Y%m%d'),
-            end_date=end_dt.strftime('%Y%m%d')
-        )
-        if df is None or df.empty:
-            return None
-        # 列: 债券类型, 日期, 3月, 6月, 1年, 3年, 5年, 7年, 10年, 30年
-        cols = df.columns.tolist()
-        date_col = cols[1]
-        type_col = cols[0]
-        # 只取国债
-        df_gov = df[df[type_col].str.contains('国债', na=False)].copy()
-        if df_gov.empty:
-            df_gov = df.copy()
-        df_gov[date_col] = pd.to_datetime(df_gov[date_col])
-        df_gov = df_gov.sort_values(date_col)
-        return df_gov, cols
-    except Exception:
-        return None
-
-
-def render_rate_monitor():
-    """V11 新增：资金面与利率监控室 - Shibor + 中债国债收益率曲线。"""
-    with st.expander("📈 资金面与利率监控室 (Money Market & Bond Yields)", expanded=True):
-
-        # ── 标题条 ─────────────────────────────────────────────────────────
-        st.markdown(
-            '<div class="term-bar">'
-            '<span class="term-bar-title">🏦 Shibor 银行间同业拆借利率 · 全期限快览</span>'
-            '<span class="term-bar-note">来源: akshare · 中国外汇交易中心(CFETS) · 每日盘后更新</span>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        st.caption("Shibor（Shanghai Interbank Offered Rate）是人民币利率的核心基准锚，短端（O/N ~ 2W）反映央行流动性松紧，长端（3M ~ 1Y）影响信贷与债券定价。")
-
-        # ── A. Shibor 全期限利率快览表格 ──────────────────────────────────
-        shibor_result = _fetch_shibor_latest()
-        if shibor_result is not None:
-            df_shibor, shibor_cols = shibor_result
-            # 解析最新一行
-            latest = df_shibor.iloc[-1]
-            # 期限映射：(列名前缀, 中文名称)
-            terms = [
-                ('O/N', '隔夜'),
-                ('1W',  '1周'),
-                ('2W',  '2周'),
-                ('1M',  '1个月'),
-                ('3M',  '3个月'),
-                ('6M',  '6个月'),
-                ('9M',  '9个月'),
-                ('1Y',  '1年'),
-            ]
-            # 构建 HTML 快览网格
-            shibor_cells = ''
-            for prefix, label in terms:
-                rate_col = f'{prefix}-利率'
-                chg_col  = f'{prefix}-涨跌幅'
-                # 尝试匹配（实际列名可能为乱码，按位置取）
-                rate_val = None
-                chg_val  = None
-                for c in shibor_cols:
-                    c_str = str(c)
-                    if prefix in c_str and '涨' not in c_str and '幅' not in c_str and c_str != shibor_cols[0]:
-                        try:
-                            rate_val = float(latest[c])
-                        except Exception:
-                            pass
-                    if prefix in c_str and ('涨' in c_str or '幅' in c_str):
-                        try:
-                            chg_val = float(latest[c])
-                        except Exception:
-                            pass
-                if rate_val is None:
-                    continue
-                if chg_val is not None and chg_val > 0:
-                    chg_html = f'<div class="shibor-chg shibor-up">▲ {chg_val:+.2f} BP</div>'
-                elif chg_val is not None and chg_val < 0:
-                    chg_html = f'<div class="shibor-chg shibor-dn">▼ {chg_val:.2f} BP</div>'
-                else:
-                    chg_html = '<div class="shibor-chg" style="color:#64748b;">── 0.00 BP</div>'
-                shibor_cells += (
-                    f'<div class="shibor-cell">'
-                    f'<div class="shibor-term">{label}</div>'
-                    f'<div class="shibor-rate">{rate_val:.4f}%</div>'
-                    f'{chg_html}'
-                    f'</div>'
-                )
-
-            # 取最新日期
-            date_col_0 = shibor_cols[0]
-            latest_date = str(latest[date_col_0]) if date_col_0 in latest.index else ''
-
-            st.markdown(
-                f'<div style="font-size:0.78rem; color:#64748b; margin-bottom:6px;">'
-                f'📅 最新报价日期: <b style="color:#94a3b8;">{latest_date}</b></div>'
-                f'<div class="shibor-grid">{shibor_cells}</div>',
-                unsafe_allow_html=True
-            )
-
-            # ── B. Shibor 近期走势折线图（3条期限对比） ─────────────────
-            st.markdown("**📊 Shibor 近 30 日走势对比（隔夜 / 1周 / 1个月）**")
-            # 提取3条期限的时序列
-            try:
-                date_vals = pd.to_datetime(df_shibor.iloc[:, 0])
-                on_vals, w1_vals, m1_vals = [], [], []
-                on_col, w1_col, m1_col = None, None, None
-                for c in shibor_cols[1:]:
-                    c_str = str(c)
-                    is_rate = '涨' not in c_str and '幅' not in c_str
-                    if 'O/N' in c_str and is_rate and on_col is None:
-                        on_col = c
-                    elif '1W' in c_str and is_rate and w1_col is None:
-                        w1_col = c
-                    elif '1M' in c_str and is_rate and m1_col is None:
-                        m1_col = c
-
-                fig_shibor = go.Figure()
-                date_strs = [d.strftime('%Y-%m-%d') for d in date_vals]
-
-                if on_col:
-                    fig_shibor.add_trace(go.Scatter(
-                        x=date_strs, y=pd.to_numeric(df_shibor[on_col], errors='coerce').tolist(),
-                        name='O/N 隔夜', line=dict(color='#ef4444', width=2),
-                        mode='lines+markers', marker=dict(size=3)
-                    ))
-                if w1_col:
-                    fig_shibor.add_trace(go.Scatter(
-                        x=date_strs, y=pd.to_numeric(df_shibor[w1_col], errors='coerce').tolist(),
-                        name='1W 一周', line=dict(color='#38bdf8', width=2),
-                        mode='lines+markers', marker=dict(size=3)
-                    ))
-                if m1_col:
-                    fig_shibor.add_trace(go.Scatter(
-                        x=date_strs, y=pd.to_numeric(df_shibor[m1_col], errors='coerce').tolist(),
-                        name='1M 一月', line=dict(color='#a78bfa', width=2),
-                        mode='lines+markers', marker=dict(size=3)
-                    ))
-
-                fig_shibor.update_layout(
-                    height=280,
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    template='plotly_dark',
-                    legend=dict(orientation='h', y=1.05, x=0, font=dict(size=11)),
-                    xaxis=dict(type='category', gridcolor='rgba(255,255,255,0.05)', tickangle=-30),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='利率 (%)', tickformat='.4f'),
-                    hovermode='x unified'
-                )
-                st.plotly_chart(apply_institutional_axes(fig_shibor), width="stretch", key="v11_shibor_trend")
-
-                # 自动生成分析段落
-                try:
-                    on_latest = float(df_shibor[on_col].iloc[-1]) if on_col else None
-                    on_prev = float(df_shibor[on_col].iloc[-2]) if on_col and len(df_shibor) >= 2 else None
-                    on_chg = (on_latest - on_prev) * 100 if on_latest and on_prev else 0
-                    chg_direction = '上行' if on_chg > 0 else ('下行' if on_chg < 0 else '持平')
-                    render_chart_caption(
-                        data_fact=f"截至 {latest_date}，Shibor O/N（隔夜）报 {on_latest:.4f}%",
-                        chg_desc=f"较前一日{chg_direction} {abs(on_chg):.2f} BP",
-                        attribution="短端拆借利率波动反映央行公开市场操作（OMO）投放节奏与市场资金面松紧程度",
-                        outlook="若隔夜利率持续高于 1W 利率，表明短期流动性偏紧，需关注央行逆回购操作动向"
-                    )
-                except Exception:
-                    pass
-            except Exception as e:
-                st.info(f"Shibor 走势图渲染暂缓: {e}")
-        else:
-            st.warning("Shibor 利率数据暂时无法获取，请稍后刷新重试。")
-
-        st.markdown("---")
-
-        # ── C. 中债国债收益率曲线（今日 vs 昨日双线对比） ───────────────
-        st.markdown(
-            '<div class="term-bar">'
-            '<span class="term-bar-title">🇨🇳 中债国债收益率曲线 · 今日 vs 昨日对比</span>'
-            '<span class="term-bar-note">来源: akshare · 中央国债登记结算有限公司(CCDC)</span>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        st.caption("国债收益率曲线是市场对未来经济与货币政策预期的综合体现。曲线走陡（长端上行）通常预示经济复苏预期增强；曲线走平（利差收窄）则反映衰退担忧或资金向长端避险。")
-
-        bond_result = _fetch_bond_yield_curve()
-        if bond_result is not None:
-            df_bond, bond_cols = bond_result
-            # 列名: [债券类型, 日期, 3月, 6月, 1年, 3年, 5年, 7年, 10年, 30年]
-            type_col  = bond_cols[0]
-            date_col  = bond_cols[1]
-            tenor_cols = bond_cols[2:]  # 3月/6月/1年/3年/5年/7年/10年/30年
-            tenor_labels = ['3月', '6月', '1年', '3年', '5年', '7年', '10年', '30年']
-
-            # 获取最新2个交易日
-            unique_dates = sorted(df_bond[date_col].unique())
-            if len(unique_dates) >= 2:
-                today_dt   = unique_dates[-1]
-                yest_dt    = unique_dates[-2]
-                row_today  = df_bond[df_bond[date_col] == today_dt].iloc[0]
-                row_yest   = df_bond[df_bond[date_col] == yest_dt].iloc[0]
-
-                today_vals = []
-                yest_vals  = []
-                valid_tenors = []
-                for tc, tl in zip(tenor_cols, tenor_labels):
-                    try:
-                        tv = float(row_today[tc])
-                        yv = float(row_yest[tc])
-                        today_vals.append(tv)
-                        yest_vals.append(yv)
-                        valid_tenors.append(tl)
-                    except Exception:
-                        pass
-
-                if valid_tenors:
-                    fig_yield = go.Figure()
-                    fig_yield.add_trace(go.Scatter(
-                        x=valid_tenors, y=today_vals,
-                        name=f'今日 ({pd.Timestamp(today_dt).strftime("%m-%d")})',
-                        line=dict(color='#ef4444', width=2.5),
-                        mode='lines+markers',
-                        marker=dict(size=7, symbol='circle'),
-                        hovertemplate='%{x}: <b>%{y:.4f}%</b><extra></extra>'
-                    ))
-                    fig_yield.add_trace(go.Scatter(
-                        x=valid_tenors, y=yest_vals,
-                        name=f'昨日 ({pd.Timestamp(yest_dt).strftime("%m-%d")})',
-                        line=dict(color='#94a3b8', width=1.5, dash='dot'),
-                        mode='lines+markers',
-                        marker=dict(size=5, symbol='circle-open'),
-                        hovertemplate='%{x}: <b>%{y:.4f}%</b><extra></extra>'
-                    ))
-
-                    # 计算10Y-1Y期限利差
-                    spread_today = None
-                    spread_yest  = None
-                    spread_chg   = None
-                    try:
-                        idx_10y = valid_tenors.index('10年')
-                        idx_1y  = valid_tenors.index('1年')
-                        spread_today = today_vals[idx_10y] - today_vals[idx_1y]
-                        spread_yest  = yest_vals[idx_10y] - yest_vals[idx_1y]
-                        spread_chg   = (spread_today - spread_yest) * 100  # BP
-                    except Exception:
-                        pass
-
-                    spread_ann = ''
-                    if spread_today is not None:
-                        spread_ann = f'  |  10Y-1Y 期限利差: {spread_today:.4f}%'
-                        if spread_chg is not None:
-                            arrow = '▲' if spread_chg > 0 else ('▼' if spread_chg < 0 else '──')
-                            clr = '#ef4444' if spread_chg > 0 else '#00b865'
-                            spread_ann += f' <span style="color:{clr};">{arrow} {abs(spread_chg):.1f} BP</span>'
-
-                    fig_yield.update_layout(
-                        height=300,
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        template='plotly_dark',
-                        legend=dict(orientation='h', y=1.08, x=0, font=dict(size=11)),
-                        xaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='期限'),
-                        yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title='收益率 (%)', tickformat='.3f'),
-                        hovermode='x unified',
-                        annotations=[
-                            dict(
-                                x=0.99, y=0.99, xref='paper', yref='paper',
-                                text=f'最新: 10Y = {today_vals[valid_tenors.index("10年")]:.4f}%' if '10年' in valid_tenors else '',
-                                showarrow=False, font=dict(size=11, color='#ef4444'),
-                                xanchor='right', yanchor='top'
-                            )
-                        ]
-                    )
-
-                    # 双列布局：左图 + 右侧利差数据框
-                    col_chart, col_stats = st.columns([2.5, 1])
-                    with col_chart:
-                        st.plotly_chart(apply_institutional_axes(fig_yield), width="stretch", key="v11_bond_yield")
-                    with col_stats:
-                        st.markdown("**利差快览**")
-                        # 今日关键期限表格
-                        rows_html = ''
-                        for tl, tv, yv in zip(valid_tenors, today_vals, yest_vals):
-                            diff_bp = (tv - yv) * 100
-                            if diff_bp > 0:
-                                diff_str = f'<span class="rate-up">▲{diff_bp:.1f}BP</span>'
-                            elif diff_bp < 0:
-                                diff_str = f'<span class="rate-dn">▼{abs(diff_bp):.1f}BP</span>'
-                            else:
-                                diff_str = '<span class="rate-neu">──</span>'
-                            rows_html += (
-                                f'<tr>'
-                                f'<td>{tl}</td>'
-                                f'<td class="num rate-val">{tv:.4f}%</td>'
-                                f'<td class="num">{diff_str}</td>'
-                                f'</tr>'
-                            )
-                        st.markdown(
-                            f'<table class="inst-table">'
-                            f'<tr><th>期限</th><th class="num">收益率</th><th class="num">日变动</th></tr>'
-                            f'{rows_html}</table>',
-                            unsafe_allow_html=True
-                        )
-                        if spread_today is not None:
-                            st.markdown(
-                                f'<div style="font-size:0.78rem; color:#94a3b8; margin-top:8px;">'
-                                f'<b>10Y-1Y 期限利差</b>: '
-                                f'<span style="color:#38bdf8; font-family:monospace; font-weight:700;">{spread_today:.4f}%</span>'
-                                f'</div>',
-                                unsafe_allow_html=True
-                            )
-
-                    # 自动分析段落
-                    if spread_today is not None and spread_chg is not None:
-                        trend_word = '走阔' if spread_chg > 0 else ('收窄' if spread_chg < 0 else '持平')
-                        render_chart_caption(
-                            data_fact=f"今日中债10年期国债收益率为 {today_vals[valid_tenors.index('10年')]:.4f}%" if '10年' in valid_tenors else "中债国债收益率已更新",
-                            chg_desc=f"10Y-1Y 期限利差 {trend_word} {abs(spread_chg):.1f} BP，当前利差 {spread_today:.4f}%",
-                            attribution="期限利差走阔通常预示市场对经济复苏信心增强，长端需求趋弱；利差收窄则反映资金向长端避险或经济预期走弱",
-                            outlook="持续关注央行公开市场操作与MLF续作情况，长端利率中枢或受地方债供给压力与资金面松紧共同主导"
-                        )
-            else:
-                st.info("国债收益率曲线数据不足，需要至少2个交易日数据进行对比。")
-        else:
-            st.warning("中债国债收益率数据暂时无法获取。")
-
-        st.markdown("---")
-
-        # ── D. 利率→股市估值传导说明框 ─────────────────────────────────
-        try:
-            rf_rate = None
-            if bond_result is not None:
-                df_bond, bond_cols = bond_result
-                unique_dates_d = sorted(df_bond[bond_cols[1]].unique())
-                if unique_dates_d:
-                    row_d = df_bond[df_bond[bond_cols[1]] == unique_dates_d[-1]].iloc[0]
-                    tenor_map = dict(zip(bond_cols[2:], ['3月','6月','1年','3年','5年','7年','10年','30年']))
-                    for tc in bond_cols[2:]:
-                        tl = tenor_map.get(tc, '')
-                        if '10年' in tl or '10' in str(tc):
-                            try:
-                                rf_rate = float(row_d[tc])
-                            except Exception:
-                                pass
-                            break
-            if rf_rate is None or rf_rate <= 0:
-                st.info("10年期中债国债收益率真实数据缺失，无法生成利率→估值传导提示，不做任何填充。")
-            else:
-                st.markdown(
-                    f'<div class="rate-relay-box">'
-                    f'<strong>📡 利率→估值传导提示</strong>（根据 DCF 分母倒数原理）<br>'
-                    f'当前 <strong>10年期中债国债收益率 = {rf_rate:.4f}%</strong>（无风险利率代理指标）<br>'
-                    f'理论股权风险溢价（ERP）约 <strong>3.0% ~ 5.0%</strong>（A股历史均值区间）<br>'
-                    f'合理 PE 上限 ≈ <strong>1 ÷ (无风险利率 + ERP) = {round(100.0/(rf_rate+3.5),1)}x ~ {round(100.0/(rf_rate+2.0),1)}x</strong><br>'
-                    f'<span style="color:#64748b; font-size:0.78rem;">当利率上行时，估值分母扩大 → 合理 PE 中枢下移；利率下行时反之。此为参考推演，非投资建议。</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-        except Exception:
-            pass
-
 
 # ============================================================================
 # ▼▼▼ 内联模块：market_tape.py  （原独立文件，V7 单文件版已合并至此）
@@ -3074,6 +2690,10 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                 parsed_data = {
                     "ticker": ticker,
                     "fiscal_quarter": fiscal_quarter,
+                    # V12：补记提交时间。原结构没有任何时间戳，而条目的
+                    # status=PENDING_ACTUALS 意味着日后要与真实财报核对，
+                    # 没有时间戳就无法判断预测做出的时点，样本失去可回溯性。
+                    "submitted_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "predictions": {
                         "revenue_estimate": revenue_estimate,
                         "net_income_estimate": net_income_estimate,
@@ -3083,7 +2703,7 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                     "user_logic_summary": user_logic if user_logic else "未填写具体逻辑",
                     "status": "PENDING_ACTUALS"
                 }
-                
+
                 # Save to file
                 try:
                     file_path = "predictions.json"
@@ -3092,11 +2712,25 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
                         with open(file_path, "r", encoding="utf-8") as f:
                             try:
                                 existing_data = json.load(f)
-                            except:
-                                pass
+                            except Exception:
+                                # V12：原来这里是裸 except + pass，损坏的库会被静默当成空库，
+                                # 紧接着被下面的写入整体覆盖 —— 历史预测全部无声丢失。
+                                # 现在先把损坏文件改名留档，再从空库继续。
+                                existing_data = []
+                                try:
+                                    os.replace(file_path, file_path + ".corrupt")
+                                    st.warning("⚠️ predictions.json 解析失败，已备份为 predictions.json.corrupt 后重建。")
+                                except OSError:
+                                    pass
+                    if not isinstance(existing_data, list):
+                        existing_data = []
                     existing_data.append(parsed_data)
-                    with open(file_path, "w", encoding="utf-8") as f:
+                    # V12：先写临时文件再 os.replace 原子替换。
+                    # 原写法用 "w" 直接截断目标文件，写入中途异常会把整个预测库清空。
+                    _tmp = file_path + ".tmp"
+                    with open(_tmp, "w", encoding="utf-8") as f:
                         json.dump(existing_data, f, ensure_ascii=False, indent=2)
+                    os.replace(_tmp, file_path)
                     st.success("✅ 您的财务预期及推演合理目标价已录入众包数据库！底牌已揭晓！")
                     st.session_state[session_key] = True
                 except Exception as e:
@@ -3646,16 +3280,95 @@ st.markdown("""
     .grid-2x2-label { font-size: 0.78rem; opacity: 0.75; margin-bottom: 0.15rem; font-weight: 500; color: var(--text-color, inherit); }
     .grid-2x2-value { font-size: 1.15rem; font-weight: 700; color: #00b865; }
 
-    /* 终极物理底端对齐强力法则：强制所有列内组件底端平齐 */
-    div[data-testid="stColumn"] > div[data-testid="stVerticalBlock"] {
-        height: 100% !important;
-        display: flex !important;
-        flex-direction: column !important;
-        justify-content: flex-end !important;
+    /* V12：宏观大事日历 —— 非农/FOMC/CPI 属一级行情驱动数据，
+       旧版按钮文字被强行居中挤成小字并互相压行，这里统一放大字号并左对齐。 */
+    .mcal-col-title { font-size: 0.92rem; color: #C7D0E0; font-weight: 700; margin-bottom: 8px; line-height: 1.5; }
+    div[class*="st-key-mcal_btn_"] button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        padding: 10px 14px !important;
+        min-height: 62px !important;
+        margin-bottom: 6px !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 10px !important;
+        line-height: 1.45 !important;
+        white-space: normal !important;
     }
+    div[class*="st-key-mcal_btn_"] button p {
+        text-align: left !important;
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+        line-height: 1.45 !important;
+        margin: 0 !important;
+    }
+    div[class*="st-key-mcal_btn_"] button p:first-child {
+        font-size: 0.78rem !important;
+        font-weight: 700 !important;
+        color: #8B93A7 !important;
+        letter-spacing: 0.4px;
+        margin-bottom: 2px !important;
+    }
+    .mcal-detail { background:#1E222D; border:1px solid #2B3139; border-radius:12px; padding:20px; margin-bottom:12px; }
+    .mcal-banner {
+        background: rgba(239,68,68,0.15); border: 1px solid #FF4B4B; color: #FF4B4B;
+        padding: 8px 14px; border-radius: 8px; font-weight: 700; margin-bottom: 14px; font-size: 0.95rem;
+    }
+    .mcal-meta { font-size: 0.8rem; color: #8B93A7; }
+    .mcal-title { font-size: 1.55rem; font-weight: 800; color: #F0F3FA; margin: 8px 0 14px 0; line-height: 1.35; }
+    .mcal-cells { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-bottom: 12px; }
+    .mcal-cell {
+        background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px; padding: 10px 14px;
+    }
+    .mcal-cell-hl { background: rgba(0,242,254,0.06); border-color: rgba(0,242,254,0.22); }
+    .mcal-cell-label { font-size: 0.78rem; color: #8B93A7; margin-bottom: 2px; }
+    .mcal-cell-value {
+        font-size: 1.6rem; font-weight: 800; color: #F0F3FA;
+        font-family: 'JetBrains Mono', 'Consolas', monospace; line-height: 1.25;
+    }
+    .mcal-surprise {
+        display: inline-block; border: 1px solid; border-radius: 8px;
+        padding: 5px 12px; font-size: 0.88rem; font-weight: 700; margin-bottom: 10px;
+    }
+    .mcal-src { font-size: 0.78rem; color: #8B93A7; line-height: 1.6; }
 
-    /* 强力精确匹配按钮垂直高度与输入框 100% 完全平齐 */
-    div.stButton > button[key="btn_main_generate"] {
+    /* V12：利率四联快览 —— 等高网格，对齐由 grid 保证，不受 Streamlit 列高影响 */
+    .rate-kpi-grid {
+        display: grid;
+        grid-template-columns: 1.35fr 1fr 1fr 1fr;
+        gap: 10px;
+        margin: 10px 0 4px 0;
+        align-items: stretch;
+    }
+    @media (max-width: 1200px) { .rate-kpi-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 640px)  { .rate-kpi-grid { grid-template-columns: 1fr; } }
+    .rate-kpi {
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 12px;
+        padding: 14px 18px;
+        display: flex; flex-direction: column; justify-content: space-between;
+        min-height: 132px;
+    }
+    .rate-kpi-primary { border-color: rgba(0,242,254,0.35); background: rgba(0,242,254,0.06); }
+    .rate-kpi-label { font-size: 0.78rem; color: #8B93A7; letter-spacing: 0.5px; line-height: 1.4; }
+    .rate-kpi-value {
+        font-size: 2.0rem; font-weight: 900; color: #F0F3FA; line-height: 1.2;
+        font-family: 'JetBrains Mono', 'Consolas', monospace; margin: 6px 0 4px 0;
+    }
+    .rate-kpi-primary .rate-kpi-value { font-size: 2.5rem; color: #00F2FE; text-shadow: 0 0 18px rgba(0,242,254,0.28); }
+    .rate-kpi-unit { font-size: 1.05rem; font-weight: 700; opacity: 0.8; margin-left: 2px; }
+    .rate-kpi-sub { font-size: 0.74rem; color: #8B93A7; line-height: 1.55; }
+    .rate-kpi-na { font-size: 1.35rem; font-weight: 700; color: #64748b; }
+
+    /* V12：列内对齐交还给各 st.columns(vertical_alignment=...) 自行决定。
+       旧版此处用 justify-content:flex-end !important 强制所有列底端对齐，
+       会覆盖全站所有 vertical_alignment="top"，把 KPI 卡片推到列底部，
+       与相邻列上沿错位（现金流穿透、资金面监控室等多处留白即源于此）。 */
+
+    /* V12：Streamlit 不会把 key 渲染成 button 的 HTML 属性，
+       button[key="..."] 选择器永远不命中；正确锚点是包裹层的 .st-key-<key> 类。 */
+    div.st-key-btn_main_generate button {
         background-color: #00b865 !important;
         color: white !important;
         font-size: 0.95rem !important;
@@ -3667,7 +3380,7 @@ st.markdown("""
         margin-top: 28px !important;
         margin-bottom: 0 !important;
     }
-    div.stButton > button[key="btn_main_generate"]:hover { background-color: #009e56 !important; }
+    div.st-key-btn_main_generate button:hover { background-color: #009e56 !important; }
 
     .news-positive { border-left: 4px solid #26A69A; background: rgba(38,166,154,0.08); padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 0.5rem; }
     .news-negative { border-left: 4px solid #EF5350; background: rgba(239,83,80,0.08); padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 0.5rem; }
@@ -4144,14 +3857,24 @@ def fetch_riskfree_rate():
             d = df.dropna(subset=["中国国债收益率10年"])
             if not d.empty:
                 row, prev = d.iloc[-1], (d.iloc[-2] if len(d) > 1 else None)
-                us10 = row.get("美国国债收益率10年")
-                try:
-                    us10 = float(us10) if us10 is not None and pd.notna(us10) else None
-                except Exception:
-                    us10 = None
+                # V12：中美利差必须取"两边都有报价的同一天"。
+                # 东财序列里美债 10Y 比中债晚一个交易日发布，最新一行的美债列常为 NaN；
+                # 旧写法只对中债列 dropna 后取最后一行，于是 us10 几乎永远是 None，
+                # 中美利差卡片长期空白（P2 右侧那一大块留白即源于此）。
+                both = df.dropna(subset=["中国国债收益率10年", "美国国债收益率10年"])
+                us10 = us10_date = us10_cn = None
+                if not both.empty:
+                    _b = both.iloc[-1]
+                    try:
+                        us10 = float(_b["美国国债收益率10年"])
+                        us10_cn = float(_b["中国国债收益率10年"])
+                        us10_date = str(_b["日期"])
+                    except Exception:
+                        us10 = us10_date = us10_cn = None
                 return dict(date=str(row["日期"]), cn10=float(row["中国国债收益率10年"]),
                             cn10_prev=(float(prev["中国国债收益率10年"]) if prev is not None else None),
-                            us10=us10, source="东方财富·中美国债收益率序列")
+                            us10=us10, us10_date=us10_date, us10_cn=us10_cn,
+                            source="东方财富·中美国债收益率序列")
     except Exception:
         pass
     try:
@@ -4249,45 +3972,62 @@ def render_rates_monitor():
     st.markdown("### 🏦 资金面与利率监控室 <span style='font-size:0.78rem; opacity:0.6;'>(利率 = 股票估值的分母 · 对标固收资金面日报)</span>", unsafe_allow_html=True)
     st.caption("无风险利率 / Shibor / 中债收益率曲线均为真实接口数据；利率传导说明为客观机制描述，不构成任何利率或行情预测。")
 
-    # ===== 主视觉：无风险收益率大字 + Shibor 关键期限 + 中美利差 =====
-    rf_c1, rf_c2, rf_c3 = st.columns([1.35, 1, 1], vertical_alignment="center")
-    with rf_c1:
-        if rf:
-            chg_bp = ((rf["cn10"] - rf["cn10_prev"]) * 100) if rf.get("cn10_prev") is not None else None
-            chg_html = (f'<span style="font-size:0.95rem; color:{C_UP if chg_bp >= 0 else C_DOWN};">{chg_bp:+.2f}BP / 日</span>' if chg_bp is not None else "")
-            st.markdown(f"""
-<div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(10px); border-radius:12px; padding:16px 22px;">
-  <div style="font-size:0.78rem; color:#8B93A7; letter-spacing:1px;">⚖️ 无风险利率锚 · 中国 10Y 国债收益率</div>
-  <div style="font-size:2.7rem; font-weight:900; color:#00F2FE; line-height:1.15; text-shadow:0 0 18px rgba(0,242,254,0.28); font-family:'JetBrains Mono',monospace;">{rf['cn10']:.4f}<span style="font-size:1.3rem;">%</span></div>
-  <div style="font-size:0.75rem; color:#8B93A7;">{rf['date']} · {rf['source']} · {chg_html}</div>
-  <div style="font-size:0.72rem; color:#8B93A7; margin-top:4px;">全站 PE / 情景推演的估值分母基准</div>
-</div>
-""", unsafe_allow_html=True)
-        else:
-            st.info("10Y 国债收益率（无风险利率锚）真实数据缺失，不做任何填充。")
-    with rf_c2:
-        if not shb.empty:
-            last = shb.iloc[-1]
-            def _kpi(lbl, col, chg_col):
-                try:
-                    _v, _c = float(last.get(col)), float(last.get(chg_col) or 0)
-                except Exception:
-                    return ""
-                return f"""<div style="background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:10px 14px; margin-bottom:8px;">
-<div style="font-size:0.75rem; color:#8B93A7;">{lbl}</div>
-<div style="font-size:1.35rem; font-weight:800; color:#F0F3FA; font-family:'JetBrains Mono',monospace;">{_v:.4f}%</div>
-<div style="font-size:0.72rem; color:{C_UP if _c >= 0 else C_DOWN};">{_c:+.2f}BP / 日</div></div>"""
-            st.markdown(_kpi("Shibor 隔夜 (O/N)", "O/N-定价", "O/N-涨跌幅") + _kpi("Shibor 1 年", "1Y-定价", "1Y-涨跌幅"), unsafe_allow_html=True)
-    with rf_c3:
-        if rf and rf.get("us10"):
-            spread = rf["cn10"] - rf["us10"]
-            st.markdown(f"""
-<div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(10px); border-radius:12px; padding:14px 18px;">
-  <div style="font-size:0.75rem; color:#8B93A7; letter-spacing:1px;">🌍 中美 10Y 利差（中 − 美）</div>
-  <div style="font-size:1.9rem; font-weight:900; color:{C_UP if spread >= 0 else C_DOWN}; font-family:'JetBrains Mono',monospace;">{spread*100:+.1f}<span style="font-size:1rem;">BP</span></div>
-  <div style="font-size:0.72rem; color:#8B93A7; margin-top:2px;">中 {rf['cn10']:.2f}% vs 美 {rf['us10']:.2f}% · 影响跨境资金与汇率预期</div>
-</div>
-""", unsafe_allow_html=True)
+    # ===== 主视觉：利率四联快览（V12） =====
+    # 旧版用 st.columns([1.35,1,1], vertical_alignment="center") 分三列：左列一张大卡、
+    # 中列两张上下堆叠的小卡、右列中美利差。三列内容高度不同 + 居中对齐 → 上下沿互不齐平；
+    # 且中美利差在 us10 缺失时整列不渲染任何东西，右侧直接空掉一大块。
+    # V12 改为单次输出的 CSS Grid：四张同规格等高卡片，对齐由 grid 保证，
+    # 任何一项数据缺失都渲染显式"数据缺失"卡而不是留白。
+    def _rate_card(icon, label, value_html, sub_html, primary=False):
+        return (f'<div class="rate-kpi{" rate-kpi-primary" if primary else ""}">'
+                f'<div class="rate-kpi-label">{icon} {label}</div>'
+                f'<div class="rate-kpi-value">{value_html}</div>'
+                f'<div class="rate-kpi-sub">{sub_html}</div></div>')
+
+    _cards = []
+    if rf:
+        chg_bp = ((rf["cn10"] - rf["cn10_prev"]) * 100) if rf.get("cn10_prev") is not None else None
+        chg_html = (f'<span style="color:{C_UP if chg_bp >= 0 else C_DOWN}; font-weight:700;">{chg_bp:+.2f}BP / 日</span>'
+                    if chg_bp is not None else '<span style="color:#8B93A7;">环比数据缺失</span>')
+        _cards.append(_rate_card(
+            "⚖️", "无风险利率锚 · 中国 10Y 国债",
+            f'{rf["cn10"]:.4f}<span class="rate-kpi-unit">%</span>',
+            f'{rf["date"]} · {rf["source"]} · {chg_html}<br>全站 PE / 情景推演的估值分母基准',
+            primary=True))
+    else:
+        _cards.append(_rate_card("⚖️", "无风险利率锚 · 中国 10Y 国债",
+                                 '<span class="rate-kpi-na">数据缺失</span>',
+                                 "真实接口未返回，不做任何填充", primary=True))
+
+    if rf and rf.get("us10"):
+        # 同一天的中债 / 美债配对报价（可能比上面的 cn10 晚一个交易日，故单独标注日期）
+        _cn_pair = rf.get("us10_cn") or rf["cn10"]
+        _spread = _cn_pair - rf["us10"]
+        _cards.append(_rate_card(
+            "🌍", "中美 10Y 利差（中 − 美）",
+            f'<span style="color:{C_UP if _spread >= 0 else C_DOWN};">{_spread*100:+.1f}</span><span class="rate-kpi-unit">BP</span>',
+            f'中 {_cn_pair:.2f}% vs 美 {rf["us10"]:.2f}%（{rf.get("us10_date") or "同日配对"}）<br>影响跨境资金流向与汇率预期'))
+    else:
+        _cards.append(_rate_card("🌍", "中美 10Y 利差（中 − 美）",
+                                 '<span class="rate-kpi-na">数据缺失</span>',
+                                 "美债 10Y 实时接口未返回<br>不以任何假设值替代"))
+
+    def _shibor_card(icon, lbl, col, chg_col, desc):
+        if shb.empty:
+            return _rate_card(icon, lbl, '<span class="rate-kpi-na">数据缺失</span>', "Shibor 接口未返回")
+        try:
+            _last = shb.iloc[-1]
+            _v = float(_last.get(col))
+            _c = float(_last.get(chg_col) or 0)
+        except Exception:
+            return _rate_card(icon, lbl, '<span class="rate-kpi-na">数据缺失</span>', "该期限报价未披露")
+        return _rate_card(icon, lbl, f'{_v:.4f}<span class="rate-kpi-unit">%</span>',
+                          f'<span style="color:{C_UP if _c >= 0 else C_DOWN}; font-weight:700;">{_c:+.2f}BP / 日</span><br>{desc}')
+
+    _cards.append(_shibor_card("🌙", "Shibor 隔夜 (O/N)", "O/N-定价", "O/N-涨跌幅", "银行间隔夜资金松紧温度计"))
+    _cards.append(_shibor_card("📆", "Shibor 1 年", "1Y-定价", "1Y-涨跌幅", "中长端资金成本 · 贷款定价参考"))
+
+    st.html('<div class="rate-kpi-grid">' + "".join(_cards) + '</div>')
 
     # ===== Shibor 全期限走势（近 180 日）=====
     if not shb.empty:
@@ -4460,10 +4200,29 @@ def fetch_macro_calendar_events() -> list:
         # V10.3 P7：上一交易日优先——当天非交易日无数据时，最近一个有数据的过去交易日
         # 的事件排在最前（最近的过去优先）；过去限 3 条 + 今天/未来限 6 条，
         # 兼顾"回顾上一交易日"与"前瞻未来排期"
+        # V12：改为"市场影响力优先"排序。旧版只按日期先后排，
+        # 瑞士失业率、日本 GDP 修正值这类低影响数据会把美国非农 / FOMC / CPI
+        # 挤出可视区——而后者才是真正驱动全球风险资产重定价的一级数据。
+        import re as _re2
+
+        def _impact_score(e):
+            _t = e["title"]
+            _s = e["_imp"] * 10
+            if e.get("tier1"):
+                _s += 100
+            if e["region"] in ("美国", "中国"):
+                _s += 25
+            if _re2.search("非农|ADP|FOMC|议息|利率决议|CPI|PCE|失业率", _t):
+                _s += 40
+            # 修正值/终值/名义口径等属同一事件的次级发布，市场影响远小于初值
+            if _re2.search("修正值|终值|名义|汽油|三年|3年", _t):
+                _s -= 45
+            return _s
+
         _past = [e for e in events if e["_off"] < 0]
         _fut = [e for e in events if e["_off"] >= 0]
-        _past.sort(key=lambda e: (-e["_off"], -e["_imp"]))
-        _fut.sort(key=lambda e: (e["_off"], -e["_imp"]))
+        _past.sort(key=lambda e: (-_impact_score(e), -e["_off"]))
+        _fut.sort(key=lambda e: (-_impact_score(e), e["_off"]))
         events = _past[:3] + _fut[:6]
         for e in events:
             e.pop("_imp", None); e.pop("_off", None)
@@ -4501,56 +4260,96 @@ def render_macro_calendar():
 
     cal_c1, cal_c2 = st.columns([1, 2], vertical_alignment="top")
     with cal_c1:
-        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px; line-height:1.5;">📌 重点事件 · 上一交易日回顾 + 未来排期</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mcal-col-title">📌 重点事件 · 上一交易日回顾 + 未来排期</div>', unsafe_allow_html=True)
+
+        # V12：默认选中影响力最高的事件（首个一级数据），而非固定的第 0 条。
+        # 列表以"上一交易日回顾"打头，固定选 0 会让右栏详情停在瑞士失业率这类
+        # 低影响条目上，把真正的美联储 / CPI / 非农挤到用户看不见的位置。
+        _default_sel = next((i for i, e in enumerate(evs) if e.get("tier1")), 0)
+        _cur_sel = st.session_state.get("mcal_sel", _default_sel)
+        if _cur_sel >= len(evs):
+            _cur_sel = _default_sel
+        # V12：一次性下发全部按钮样式。旧版在循环里逐个 st.markdown 注入 <style>，
+        # 既产生 N 个占位空元素（撑出行间空隙、造成文字挤压重叠），
+        # 选择器 button[key="..."] 又永远不命中——Streamlit 不会把 key 渲染成
+        # button 的 HTML 属性，只会在包裹层输出 .st-key-<key> 类。
+        # 选择器用 div[class*="st-key-..."]，与下方通用规则同特异度、靠"后出现者胜"生效；
+        # 若写成 .st-key-xxx button（0,1,1）会被通用规则 div[class*=…] button（0,2,1）压掉。
+        _tier1_idx = [i for i, e in enumerate(evs) if e.get("tier1")]
+        _btn_css = "".join(
+            f'div[class*="st-key-mcal_btn_{i}"] button {{ border-left:4px solid #FF4B4B !important; '
+            f'background: linear-gradient(90deg, rgba(239,68,68,0.16) 0%, rgba(30,41,59,0.85) 60%) !important; }}'
+            for i in _tier1_idx)
+        _btn_css += (f'div[class*="st-key-mcal_btn_{_cur_sel}"] button {{ border-color:#4B9FFF !important; '
+                     f'box-shadow:0 0 0 1px #4B9FFF inset, 0 0 14px rgba(75,159,255,0.25) !important; }}')
+        st.html(f"<style>{_btn_css}</style>")
+
         for i, ev in enumerate(evs):
-            sel = st.session_state.get("mcal_sel", 0) == i
             tier1 = ev.get("tier1", False)
-            btn_title = f"{ev['date']} ｜ {ev['region']} ｜ {ev['title']}"
-            
             if tier1:
-                prefix = "🔥【重磅】"
-                if "非农" in ev['title'] or "失业" in ev['title'] or "ADP" in ev['title']: prefix = "🔥【重磅·大非农】"
-                elif "FOMC" in ev['title'] or "议息" in ev['title'] or "决议" in ev['title']: prefix = "⚡【重磅·美联储】"
-                elif "CPI" in ev['title'] or "PCE" in ev['title'] or "GDP" in ev['title']: prefix = "📊【核心·宏观】"
-                btn_title = f"{prefix} {ev['date']} ｜ {ev['region']} ｜ {ev['title']}"
-                st.markdown(f"""
-                <style>
-                div.stButton > button[key="mcal_btn_{i}"] {{
-                    border: 1.5px solid #FF4B4B !important;
-                    background: linear-gradient(90deg, rgba(239,68,68,0.2) 0%, rgba(30,41,59,0.8) 100%) !important;
-                }}
-                </style>
-                """, unsafe_allow_html=True)
-            
+                prefix = "🔥 重磅"
+                if "非农" in ev['title'] or "失业" in ev['title'] or "ADP" in ev['title']: prefix = "🔥 大非农"
+                elif "FOMC" in ev['title'] or "议息" in ev['title'] or "决议" in ev['title']: prefix = "⚡ 美联储"
+                elif "CPI" in ev['title'] or "PCE" in ev['title'] or "GDP" in ev['title']: prefix = "📊 核心宏观"
+                btn_title = f"{prefix} · {ev['date']} {ev.get('time','')} · {ev['region']}\n\n{ev['title']}"
+            else:
+                btn_title = f"{ev['date']} {ev.get('time','')} · {ev['region']}\n\n{ev['title']}"
             if st.button(btn_title, key=f"mcal_btn_{i}", use_container_width=True):
                 st.session_state.mcal_sel = i
                 st.rerun()
-            # 选中态高亮提示（按钮本体无法直接改色，用底部标记条区分）
-            if sel:
-                st.markdown('<div style="height:2px; background:#4B9FFF; border-radius:2px; margin:-8px 4px 10px 4px;"></div>', unsafe_allow_html=True)
         src_note = evs[0].get("source", "") if evs else ""
         st.caption(f"数据来源：{src_note}" if src_note else "暂无事件数据")
 
     with cal_c2:
         # V10.3 P6：右栏加与左栏同规格的小标题，两栏首行对齐（右栏详情卡随之下移，
         # 上沿与左侧第一个事件按钮的上沿水平对齐）
-        st.markdown('<div style="font-size:0.8rem; color:#8B93A7; font-weight:700; margin-bottom:6px; line-height:1.5;">🔍 事件详情 · 客观影响解读</div>', unsafe_allow_html=True)
-        ev = evs[st.session_state.get("mcal_sel", 0)] if evs else None
+        st.markdown('<div class="mcal-col-title">🔍 事件详情 · 客观影响解读</div>', unsafe_allow_html=True)
+        # 复用左栏已做过越界校正的 _cur_sel：事件列表在缓存刷新后可能变短，
+        # 直接用 session_state 里的旧索引取值会 IndexError。
+        ev = evs[_cur_sel] if evs else None
         if ev:
             tier1 = ev.get("tier1", False)
-            tier1_banner = '<div style="background: rgba(239,68,68,0.15); border: 1px solid #FF4B4B; color: #FF4B4B; padding: 6px 12px; border-radius: 6px; font-weight: bold; margin-bottom: 12px; font-size: 0.9rem;">⚠️ 全球金融市场一级核弹数据 · 波动率爆发预警</div>' if tier1 else ''
-            _mrow = lambda lbl, v: f"<div style='display:inline-block; margin-right:18px;'><span style='color:#8B93A7; font-size:0.78rem;'>{lbl}</span><br><b style='color:#F0F3FA;'>{v if v is not None else '—'}</b></div>"
+            tier1_banner = '<div class="mcal-banner">⚠️ 全球金融市场一级核弹数据 · 波动率爆发预警</div>' if tier1 else ''
+            # V12：前值/预期/公布 升级为等宽 KPI 单元（字号 0.78rem → 1.6rem），
+            # 并按机构惯例算出「公布 − 预期」的意外差（surprise），
+            # 仅在两者都为可解析数值时给出，缺任一项即显示「待公布」，不做任何推算。
+            def _mcell(lbl, v, big=False, color=None):
+                _v = v if v is not None else "—"
+                _c = f" style='color:{color};'" if color else ""
+                return (f'<div class="mcal-cell{" mcal-cell-hl" if big else ""}">'
+                        f'<div class="mcal-cell-label">{lbl}</div>'
+                        f'<div class="mcal-cell-value"{_c}>{_v}</div></div>')
+
+            def _as_num(x):
+                try:
+                    return float(str(x).replace("%", "").replace(",", "").strip())
+                except Exception:
+                    return None
+
+            _exp_n, _pub_n = _as_num(ev.get("expected")), _as_num(ev.get("published"))
+            if _exp_n is not None and _pub_n is not None:
+                _diff = _pub_n - _exp_n
+                _sur_col = C_UP if _diff >= 0 else C_DOWN
+                _sur_lbl = "高于预期" if _diff > 0 else ("符合预期" if _diff == 0 else "低于预期")
+                _surprise = (f'<div class="mcal-surprise" style="border-color:{_sur_col}; color:{_sur_col};">'
+                             f'意外差 {_diff:+.2f} · {_sur_lbl}</div>')
+                _pub_cell = _mcell("公布值", ev.get("published"), big=True, color=_sur_col)
+            else:
+                _surprise = '<div class="mcal-surprise" style="border-color:#475569; color:#8B93A7;">尚未公布 · 无意外差</div>'
+                _pub_cell = _mcell("公布值", ev.get("published"), big=True)
+
             st.markdown(f"""
-<div style="background:#1E222D; border:1px solid #2B3139; border-radius:12px; padding:18px; margin-bottom:12px;">
+<div class="mcal-detail">
 {tier1_banner}
-<div style="font-size:0.78rem; color:#8B93A7;">事件 · {ev['date']} {ev.get('time','')} · 重要性 {ev.get('importance','—')}</div>
-<div style="font-size:1.25rem; font-weight:800; color:#F0F3FA; margin:6px 0;">{ev['region']} · {ev['title']}</div>
-<div style="margin:10px 0 4px 0;">
-{_mrow('预期值', ev.get('expected'))}
-{_mrow('前值', ev.get('previous'))}
-{_mrow('公布值', ev.get('published'))}
+<div class="mcal-meta">事件 · {ev['date']} {ev.get('time','')} · 重要性 {ev.get('importance','—')}</div>
+<div class="mcal-title">{ev['region']} · {ev['title']}</div>
+<div class="mcal-cells">
+{_mcell('前值', ev.get('previous'))}
+{_mcell('预期值', ev.get('expected'))}
+{_pub_cell}
 </div>
-<div style="font-size:0.78rem; color:#8B93A7;">{ev['detail']} · 来源：{ev['source']}</div>
+{_surprise}
+<div class="mcal-src">{ev['detail']} · 来源：{ev['source']}</div>
 </div>
 """, unsafe_allow_html=True)
             st.markdown("#### 🔗 客观影响链条（规则库生成 · 无方向性判断）")
@@ -5826,8 +5625,11 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.plotly_chart(fig_radar, width="stretch", config={'displayModeBar': False})
                 st.caption("📌 五维评分基于真实财务数据的固定映射公式归一化到0-100，客观指标可视化，不代表投资建议。")
 
-            with exec_c2:
-                st.markdown('<div class="bg-card-glass" style="padding:18px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
+            # V12：改用 st.container(border=True) 真正包裹内容。旧版用两次独立的
+            # st.markdown 分别输出 <div> 与 </div>，Streamlit 会把每次调用渲染成
+            # 各自独立的兄弟节点，浏览器随即把未闭合的 <div> 自动闭合，结果是
+            # 渲染出两个高 37px 的空卡片，而正文内容全部落在卡片外面。
+            with exec_c2, st.container(border=True):
                 st.markdown("#### 🎯 标的五维画像量化诊断")
                 st.markdown('<span class="badge-neutral">基于真实财务与行情指标映射的五维归一化解构</span>', unsafe_allow_html=True)
                 st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
@@ -5855,11 +5657,9 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
                 st.markdown("---")
                 avg_score = sum(radar_scores.values()) / 5.0
                 st.markdown(f"💡 **五维综合健康指数**: <span style='font-size:1.15rem; font-weight:bold; color:#00F2FE;'>{avg_score:.1f} / 100</span>", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
 
             # ===== V9 P1/P2 右栏：第三方分析师评级分布（原 Tab1 底部独立行，上移填补空白） =====
-            with exec_c3:
-                st.markdown('<div class="bg-card-glass" style="padding:18px; border-radius:12px; background: rgba(22, 27, 38, 0.75); border: 1px solid rgba(255, 255, 255, 0.08); height:100%;">', unsafe_allow_html=True)
+            with exec_c3, st.container(border=True):
                 st.markdown("#### 📊 第三方分析师评级分布")
                 st.markdown('<span class="badge-neutral">yfinance 历史评级记录 · 不构成投资建议</span>', unsafe_allow_html=True)
                 st.markdown('<div style="margin-top:14px;"></div>', unsafe_allow_html=True)
@@ -5919,7 +5719,6 @@ if ticker_input and all_data and all_data.get('hist_1y') is not None:
 
 <div style="font-size:0.75rem; opacity:0.6; margin-top:0.6rem;">数据来源：yfinance 分析师一致预期（历史事实记录）<br>不构成投资建议</div>
 """, unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
