@@ -2442,19 +2442,19 @@ def render_rate_monitor():
                             except Exception:
                                 pass
                             break
-            if rf_rate is None:
-                rf_rate = 2.0  # 默认回退值
-            implied_pe = round(100.0 / rf_rate, 1) if rf_rate > 0 else 50.0
-            st.markdown(
-                f'<div class="rate-relay-box">'
-                f'<strong>📡 利率→估值传导提示</strong>（根据 DCF 分母倒数原理）<br>'
-                f'当前 <strong>10年期中债国债收益率 = {rf_rate:.4f}%</strong>（无风险利率代理指标）<br>'
-                f'理论股权风险溢价（ERP）约 <strong>3.0% ~ 5.0%</strong>（A股历史均值区间）<br>'
-                f'合理 PE 上限 ≈ <strong>1 ÷ (无风险利率 + ERP) = {round(100.0/(rf_rate+3.5),1)}x ~ {round(100.0/(rf_rate+2.0),1)}x</strong><br>'
-                f'<span style="color:#64748b; font-size:0.78rem;">当利率上行时，估值分母扩大 → 合理 PE 中枢下移；利率下行时反之。此为参考推演，非投资建议。</span>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            if rf_rate is None or rf_rate <= 0:
+                st.info("10年期中债国债收益率真实数据缺失，无法生成利率→估值传导提示，不做任何填充。")
+            else:
+                st.markdown(
+                    f'<div class="rate-relay-box">'
+                    f'<strong>📡 利率→估值传导提示</strong>（根据 DCF 分母倒数原理）<br>'
+                    f'当前 <strong>10年期中债国债收益率 = {rf_rate:.4f}%</strong>（无风险利率代理指标）<br>'
+                    f'理论股权风险溢价（ERP）约 <strong>3.0% ~ 5.0%</strong>（A股历史均值区间）<br>'
+                    f'合理 PE 上限 ≈ <strong>1 ÷ (无风险利率 + ERP) = {round(100.0/(rf_rate+3.5),1)}x ~ {round(100.0/(rf_rate+2.0),1)}x</strong><br>'
+                    f'<span style="color:#64748b; font-size:0.78rem;">当利率上行时，估值分母扩大 → 合理 PE 中枢下移；利率下行时反之。此为参考推演，非投资建议。</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
         except Exception:
             pass
 
@@ -2491,17 +2491,6 @@ def save_news_cache(news_list):
                 valid_news.append(item)
         except Exception:
             valid_news.append(item)
-
-    is_usd = bool(currency in ["USD", "$"])
-    price_lbl = "$" if is_usd else "元"
-    
-    def fmt_calc_price(val):
-        if not val or val <= 0:
-            return "数据缺失"
-        if is_usd:
-            return f"${val:,.2f}"
-        else:
-            return f"{val:,.2f} 元"
 
     valid_news.sort(key=lambda x: x.get('time_str', ''), reverse=True)
     try:
@@ -2798,7 +2787,15 @@ def get_crowdsource_ui(api_key, ticker, all_data=None):
     is_usd = currency in ['USD', '$']
     unit_lbl = "亿美元" if is_usd else "亿元"
     price_lbl = "$" if is_usd else "元"
-    
+
+    def fmt_calc_price(val):
+        if not val or val <= 0:
+            return "数据缺失"
+        if is_usd:
+            return f"${val:,.2f}"
+        else:
+            return f"{val:,.2f} 元"
+
     # 计算总股本 (单位: 亿股)
     shares = info.get('sharesOutstanding')
     if (shares is None or shares == 0) and mcap and price:

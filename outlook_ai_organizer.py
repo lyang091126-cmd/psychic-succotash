@@ -11,8 +11,8 @@ sys.stdout.reconfigure(encoding='utf-8')
 # ==========================================
 # 配置区域 (Configuration)
 # ==========================================
-# 请在这里填入您的 Gemini API Key。如果没有，请去 Google AI Studio 申请一个。
-GEMINI_API_KEY = "3deef4cb08664a84a5fd896b209cbbd8.vtKntDg4ac0AUVhK"
+# 请通过环境变量 GEMINI_API_KEY 设置密钥（不要写死在代码里）。如果没有，请去 Google AI Studio 申请一个。
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 DAYS_TO_EXTRACT = 30 # 提取最近 30 天的邮件
 EXPORT_FILENAME = "智能邮件整理报告.xlsx"
 
