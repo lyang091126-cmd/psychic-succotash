@@ -1,7 +1,9 @@
-streamlit
+﻿streamlit
 pandas
 numpy
 yfinance
 plotly
 openai
 akshare
+requests
+python-dateutil
